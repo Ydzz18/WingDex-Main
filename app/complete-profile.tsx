@@ -31,6 +31,20 @@ type Step = 1 | 2 | 3;
 const categories = ['Forest', 'Wetlands', 'Coastal', 'Urban', 'Mountains', 'Grassland'];
 const interests = ['Conservation', 'Bird photography', 'Migration', 'Endemic species', 'Bird calls'];
 
+function getLicenseSaveErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (typeof error === 'object' && error !== null) {
+    if ('message' in error && typeof error.message === 'string' && error.message.trim()) {
+      return error.message;
+    }
+    if ('code' in error && typeof error.code === 'string' && error.code.trim()) {
+      return `Your license could not be issued (error ${error.code}).`;
+    }
+  }
+  return 'Your license could not be issued. Please try again.';
+}
+
 export default function CompleteProfileScreen() {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>(1);
@@ -173,7 +187,8 @@ export default function CompleteProfileScreen() {
       });
       router.replace('/(tabs)/user_profile');
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Your license could not be issued. Try again.');
+      console.error('Could not issue the Bird Watcher License:', saveError);
+      setError(getLicenseSaveErrorMessage(saveError));
     } finally {
       setSubmitting(false);
     }

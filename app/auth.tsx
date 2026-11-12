@@ -364,6 +364,8 @@ export default function AuthScreen() {
               <Text style={styles.introCopy}>
                 {session && mode !== 'recovery'
                   ? 'A little more room for every bird you find.'
+                  : mode === 'signup'
+                    ? 'Create your account first. After sign-in, you’ll complete age verification and build your bird-watching profile.'
                   : mode === 'reset'
                     ? 'We’ll send a quiet note to help you back in.'
                     : mode === 'recovery'
