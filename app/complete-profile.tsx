@@ -46,7 +46,6 @@ export default function CompleteProfileScreen() {
   const [preferredRegion, setPreferredRegion] = useState('National Capital Region');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [shareLicense, setShareLicense] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [ageStateLoading, setAgeStateLoading] = useState(true);
   const [photoSaving, setPhotoSaving] = useState(false);
@@ -171,7 +170,6 @@ export default function CompleteProfileScreen() {
         preferredCategories: selectedCategories,
         interests: selectedInterests,
         preferredDiscoveryRegion: preferredRegion,
-        sharingEnabled: shareLicense,
       });
       router.replace('/(tabs)/user_profile');
     } catch (saveError) {
@@ -242,7 +240,7 @@ export default function CompleteProfileScreen() {
                 ? 'Before your field journal opens, we check your self-reported age privately. No identity or guardian-verification provider is configured; your date of birth is never placed in sign-in metadata or your public license.'
                 : step === 2
                   ? 'Choose the identity and home region you want on your personal field credential.'
-                  : 'Tell us what you love to find. Your license starts private; sharing is always your choice.'}
+                  : 'Tell us what you love to find. Your issued license is public; your email and date of birth stay private.'}
             </Text>
 
             <View style={styles.stepper} accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: 3, now: step }}>
@@ -362,13 +360,13 @@ export default function CompleteProfileScreen() {
                     </Pressable>
                   ))}
                 </ScrollView>
-                <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: shareLicense }} onPress={() => setShareLicense(!shareLicense)} style={styles.shareOption}>
-                  <View style={[styles.checkbox, shareLicense && styles.checkboxChecked]}>{shareLicense && <Check color={colors.white} size={14} />}</View>
-                  <View style={styles.shareCopy}>
-                    <Text style={styles.shareTitle}>Make my license public</Text>
-                    <Text style={styles.shareText}>Optional. Off by default. Only the safe profile shown by Wingdex’s public license view will be shared.</Text>
+                <View style={styles.publicDisclosure}>
+                  <ShieldCheck color={colors.ink} size={19} />
+                  <View style={styles.disclosureCopy}>
+                    <Text style={styles.shareTitle}>Your license will be public</Text>
+                    <Text style={styles.shareText}>Once issued, anyone with your license link can see your username, display name, bio, country and city, home region and badge identity, favorite bird, habitat preferences, birding interests, discovery preference, issue date, species total, and earned badges. Your email and date of birth are never public.</Text>
                   </View>
-                </Pressable>
+                </View>
                 {error && <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>}
                 <View style={styles.buttonRow}>
                   <Pressable onPress={() => setStep(2)} style={styles.backButton}><ArrowLeft color={colors.inkSoft} size={17} /><Text style={styles.backText}>Back</Text></Pressable>
@@ -380,7 +378,7 @@ export default function CompleteProfileScreen() {
               </View>
             )}
 
-            <View style={styles.footer}><View style={styles.footerRule} /><Text style={styles.footerText}>A FIELD CREDENTIAL, PRIVATE BY NATURE</Text></View>
+            <View style={styles.footer}><View style={styles.footerRule} /><Text style={styles.footerText}>PUBLIC FIELD CREDENTIAL · PRIVATE ACCOUNT DETAILS</Text></View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -441,10 +439,8 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipText: { color: colors.inkSoft, fontSize: 11, fontWeight: '700' },
   chipTextSelected: { color: colors.white },
-  shareOption: { flexDirection: 'row', alignItems: 'flex-start', gap: 11, padding: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.white, marginTop: 4 },
-  checkbox: { width: 21, height: 21, borderWidth: 1, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
-  checkboxChecked: { backgroundColor: colors.ink, borderColor: colors.ink },
-  shareCopy: { flex: 1 },
+  publicDisclosure: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 13, borderWidth: 1, borderColor: '#D8C99D', backgroundColor: '#EAE5D5', marginTop: 4 },
+  disclosureCopy: { flex: 1 },
   shareTitle: { color: colors.ink, fontSize: 13, fontWeight: '800' },
   shareText: { color: colors.inkSoft, fontSize: 11, lineHeight: 17, marginTop: 4 },
   providerNotice: { flexDirection: 'row', gap: 10, padding: 13, marginTop: 23, backgroundColor: '#E8EFE5' },

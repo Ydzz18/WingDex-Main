@@ -13,21 +13,21 @@ import {
   View,
 } from 'react-native';
 import * as ExpoLinking from 'expo-linking';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { ArrowLeft, ArrowUpRight, CodeXml, Eye, EyeOff, Feather, Leaf, LockKeyhole, Mail, ShieldCheck } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isSupabaseConfigured, supabase } from '../src/services/supabase';
-import { getSelfReportedAge, submitPrivateBirthDate } from '../src/services/birdingLicense';
+import {
+  getAuthRecoveryPending,
+  setAuthRecoveryActive,
+} from '../src/services/authRecovery';
 import { colors } from '../src/theme';
 
 type AuthMode = 'login' | 'signup' | 'reset' | 'recovery';
 type OAuthProvider = 'google' | 'facebook' | 'github';
 type Notice = { kind: 'success' | 'error'; text: string };
-
-const RECOVERY_PENDING_KEY = 'wingdex.auth.recovery-pending';
 
 function friendlyError(message: string) {
   return message.replace(/^AuthApiError:\s*/i, '').trim();
@@ -39,6 +39,7 @@ function parseAuthUrl(link: string) {
   return {
     code: parsed.searchParams.get('code'),
     type: parsed.searchParams.get('type') ?? hash.get('type'),
+    flow: parsed.searchParams.get('auth_flow'),
     error: parsed.searchParams.get('error_description') ?? hash.get('error_description'),
     accessToken: hash.get('access_token'),
     refreshToken: hash.get('refresh_token'),
@@ -48,13 +49,11 @@ function parseAuthUrl(link: string) {
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AuthMode>('login');
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [birthDate, setBirthDate] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [checkingSession, setCheckingSession] = useState(isSupabaseConfigured);
   const [submitting, setSubmitting] = useState(false);
@@ -74,16 +73,17 @@ export default function AuthScreen() {
       try {
         const callback = parseAuthUrl(link);
         if (callback.error) {
-          await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+          await setAuthRecoveryActive(false);
           showError(callback.error);
           return;
         }
 
         const recoveryPending = callback.type === 'recovery' ||
-          Boolean(callback.code && await AsyncStorage.getItem(RECOVERY_PENDING_KEY));
+          Boolean(callback.code && await getAuthRecoveryPending());
+        const signupConfirmation = callback.flow === 'signup_confirmation' || callback.type === 'signup';
         if (recoveryPending) {
           setMode('recovery');
-          await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+          await setAuthRecoveryActive(true);
         }
 
         if (callback.code) {
@@ -92,9 +92,12 @@ export default function AuthScreen() {
           else {
             setEmail(data.session?.user.email ?? '');
             if (!recoveryPending) {
-              const message = 'Your email is confirmed. Your field journal is ready.';
+              const message = signupConfirmation
+                ? 'Your email is confirmed. Continue with age verification and your field profile.'
+                : 'Your email is confirmed. Your field journal is ready.';
               if (data.session) {
-                router.replace({ pathname: '/user_profile', params: { authNotice: message } });
+                if (signupConfirmation) router.replace('/complete-profile');
+                else router.replace({ pathname: '/user_profile', params: { authNotice: message } });
               } else {
                 setNotice({ kind: 'success', text: message });
               }
@@ -109,9 +112,12 @@ export default function AuthScreen() {
           else {
             setEmail(data.session?.user.email ?? '');
             if (!recoveryPending) {
-              const message = 'Your email is confirmed. Your field journal is ready.';
+              const message = signupConfirmation
+                ? 'Your email is confirmed. Continue with age verification and your field profile.'
+                : 'Your email is confirmed. Your field journal is ready.';
               if (data.session) {
-                router.replace({ pathname: '/user_profile', params: { authNotice: message } });
+                if (signupConfirmation) router.replace('/complete-profile');
+                else router.replace({ pathname: '/user_profile', params: { authNotice: message } });
               } else {
                 setNotice({ kind: 'success', text: message });
               }
@@ -119,6 +125,7 @@ export default function AuthScreen() {
           }
         }
       } catch {
+        await setAuthRecoveryActive(false);
         showError('We couldn’t complete that email link. Please request a new one and try again.');
       }
     };
@@ -171,6 +178,7 @@ export default function AuthScreen() {
 
   const handleOAuthSignIn = async (provider: OAuthProvider) => {
     if (!supabase || submitting) return;
+    await setAuthRecoveryActive(false);
     setSubmitting(true);
     setOAuthProvider(provider);
     clearNotice();
@@ -223,28 +231,6 @@ export default function AuthScreen() {
       setNotice({ kind: 'error', text: 'Those passwords don’t match yet.' });
       return;
     }
-    if (mode === 'signup') {
-      if (!/^[a-zA-Z0-9_]{3,24}$/.test(username.trim())) {
-        setNotice({ kind: 'error', text: 'Choose a username of 3–24 letters, numbers, or underscores.' });
-        return;
-      }
-      const age = getSelfReportedAge(birthDate.trim());
-      if (age === null) {
-        setNotice({ kind: 'error', text: 'Enter your date of birth in YYYY-MM-DD format.' });
-        return;
-      }
-      if (age < 13) {
-        setNotice({ kind: 'error', text: 'You must be at least 13 to create a Wingdex account.' });
-        return;
-      }
-      if (age < 18) {
-        setNotice({
-          kind: 'error',
-          text: 'Wingdex cannot admit people under 18 until a real guardian-consent provider is configured. No consent has been verified.',
-        });
-        return;
-      }
-    }
     if (mode === 'recovery' && password !== confirmPassword) {
       setNotice({ kind: 'error', text: 'Those passwords don’t match yet.' });
       return;
@@ -253,48 +239,49 @@ export default function AuthScreen() {
     setSubmitting(true);
     try {
       if (mode === 'signup') {
+        await setAuthRecoveryActive(false);
         const { data, error } = await supabase.auth.signUp({
           email: normalizedEmail,
           password,
           options: {
-            emailRedirectTo: ExpoLinking.createURL('auth'),
-            data: { username: username.trim().toLowerCase() },
+            emailRedirectTo: ExpoLinking.createURL('auth', {
+              queryParams: { auth_flow: 'signup_confirmation' },
+            }),
           },
         });
         if (error) throw error;
         setPassword('');
         setConfirmPassword('');
-        if (data.session) {
-          await submitPrivateBirthDate(birthDate.trim()).catch(() => undefined);
-        }
         const message = data.session
-          ? 'Your account is ready. Welcome to your Wingdex field journal.'
-          : 'Check your inbox for a confirmation link to finish creating your account.';
+          ? 'Your account is ready. Continue with age verification and your field profile.'
+          : 'Check your inbox to confirm your email. Once confirmed, you’ll continue with age verification and your field profile.';
         if (data.session) {
-          router.replace('/complete-profile' as Href);
+          router.replace('/complete-profile');
         } else {
           setNotice({ kind: 'success', text: message });
         }
       } else if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: normalizedEmail,
           password,
         });
         if (error) throw error;
-        router.replace('/user_profile');
+        await setAuthRecoveryActive(false);
+        if (data.session) router.replace('/complete-profile');
       } else if (mode === 'reset') {
-        await AsyncStorage.setItem(RECOVERY_PENDING_KEY, 'true');
+        await setAuthRecoveryActive(true);
         const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
           redirectTo: ExpoLinking.createURL('auth'),
         });
         if (error) {
-          await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+          await setAuthRecoveryActive(false);
           throw error;
         }
         setNotice({ kind: 'success', text: 'If an account exists for this address, a password reset link is on its way.' });
       } else {
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
+        await setAuthRecoveryActive(false);
         setPassword('');
         setConfirmPassword('');
         setMode('login');
@@ -320,6 +307,7 @@ export default function AuthScreen() {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      await setAuthRecoveryActive(false);
       setMode('login');
       setNotice({ kind: 'success', text: 'You’re signed out. Your saved birds remain on this device.' });
     } catch (error) {
@@ -535,41 +523,6 @@ export default function AuthScreen() {
                 )}
 
                 <View style={styles.form}>
-                  {mode === 'signup' && (
-                    <>
-                      <Text style={styles.label}>USERNAME</Text>
-                      <View style={styles.inputWrap}>
-                        <TextInput
-                          accessibilityLabel="Username"
-                          autoCapitalize="none"
-                          autoComplete="username"
-                          autoCorrect={false}
-                          onChangeText={setUsername}
-                          placeholder="field_birder"
-                          placeholderTextColor={colors.muted}
-                          style={styles.input}
-                          textContentType="username"
-                          value={username}
-                        />
-                      </View>
-                      <Text style={styles.label}>DATE OF BIRTH</Text>
-                      <View style={styles.inputWrap}>
-                        <TextInput
-                          accessibilityLabel="Date of birth"
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          onChangeText={setBirthDate}
-                          placeholder="YYYY-MM-DD"
-                          placeholderTextColor={colors.muted}
-                          style={styles.input}
-                          value={birthDate}
-                        />
-                      </View>
-                      <Text style={styles.privacyNote}>
-                        Your self-reported date is checked privately and never added to public profile or sign-in metadata. Under-18 accounts cannot enter while guardian verification is unavailable.
-                      </Text>
-                    </>
-                  )}
                   <Text style={styles.label}>EMAIL ADDRESS</Text>
                   <View style={styles.inputWrap}>
                     <Mail color={colors.muted} size={18} />

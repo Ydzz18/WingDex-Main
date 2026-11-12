@@ -6,11 +6,18 @@ import type { Session } from '@supabase/supabase-js';
 import { SplashReveal } from '../src/components/SplashReveal';
 import { supabase } from '../src/services/supabase';
 import { getLicenseAccessState, subscribeToLicenseAccess } from '../src/services/birdingLicense';
+import {
+  isAuthRecoveryActive,
+  restoreAuthRecoveryState,
+  subscribeToAuthRecovery,
+} from '../src/services/authRecovery';
 import { colors } from '../src/theme';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionReady, setSessionReady] = useState(() => !supabase);
+  const [recoveryReady, setRecoveryReady] = useState(() => !supabase);
+  const [recoveryMode, setRecoveryMode] = useState(isAuthRecoveryActive);
   const [appAccess, setAppAccess] = useState<'checking' | 'allowed' | 'blocked' | 'error' | 'signed-out'>(
     () => supabase ? 'checking' : 'signed-out',
   );
@@ -20,6 +27,12 @@ export default function RootLayout() {
     if (!supabase) return;
 
     let active = true;
+    const unsubscribeRecovery = subscribeToAuthRecovery(setRecoveryMode);
+    restoreAuthRecoveryState().catch((error: unknown) => {
+      console.error('Could not restore the password recovery state:', error);
+    }).finally(() => {
+      if (active) setRecoveryReady(true);
+    });
     let receivedAuthEvent = false;
     const refreshAccess = async (userId: string) => {
       setAppAccess('checking');
@@ -73,24 +86,25 @@ export default function RootLayout() {
       active = false;
       subscription.unsubscribe();
       unsubscribeAccess();
+      unsubscribeRecovery();
     };
   }, []);
 
   const finishSplash = useCallback(() => setSplashFinished(true), []);
-  const showSplash = !splashFinished || !sessionReady;
+  const showSplash = !splashFinished || !sessionReady || !recoveryReady;
 
   return (
     <SafeAreaProvider>
       <StatusBar style={showSplash ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
-        <Stack.Protected guard={sessionReady && Boolean(session) && appAccess === 'allowed'}>
+        <Stack.Protected guard={sessionReady && recoveryReady && Boolean(session) && appAccess === 'allowed'}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="bird/[id]" options={{ presentation: 'modal' }} />
         </Stack.Protected>
-        <Stack.Protected guard={sessionReady && Boolean(session) && appAccess !== 'allowed'}>
+        <Stack.Protected guard={sessionReady && recoveryReady && Boolean(session) && appAccess !== 'allowed'}>
           <Stack.Screen name="complete-profile" />
         </Stack.Protected>
-        <Stack.Protected guard={!sessionReady || !session}>
+        <Stack.Protected guard={!sessionReady || !recoveryReady || !session || recoveryMode}>
           <Stack.Screen name="auth" />
         </Stack.Protected>
         <Stack.Screen name="license/[licenseNumber]" />

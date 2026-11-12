@@ -45,8 +45,8 @@ export default function PublicLicenseScreen() {
             <View style={styles.unavailable}>
               <View style={styles.brandMark}><LockKeyhole color={colors.paper} size={18} /></View>
               <Text style={styles.eyebrow}>LICENSE NOT AVAILABLE</Text>
-              <Text style={styles.title}>This field record is private.</Text>
-              <Text style={styles.bodyText}>The license may not exist, or its owner may have turned sharing off.</Text>
+              <Text style={styles.title}>This field record can’t be shown.</Text>
+              <Text style={styles.bodyText}>The license may not exist, or it may not have a completed adult profile.</Text>
             </View>
           ) : (
             <>
@@ -76,7 +76,7 @@ export default function PublicLicenseScreen() {
                   <View style={styles.bottomCopy}>
                     <Text style={styles.region}>{profile.home_region_name ?? profile.country}</Text>
                     {profile.home_region_code ? <Text style={styles.regionIdentity}>{regionalBadgeIdentities[profile.home_region_code].title}</Text> : null}
-                    {profile.city ? <Text style={styles.city}>{profile.city}</Text> : null}
+                    <Text style={styles.city}>{[profile.city, profile.country].filter(Boolean).join(', ')}</Text>
                     <Text style={styles.species}>{profile.species_count} recorded species</Text>
                     {profile.favorite_bird ? <Text style={styles.favorite}>FAVORITE · {profile.favorite_bird}</Text> : null}
                   </View>
@@ -119,6 +119,12 @@ export default function PublicLicenseScreen() {
                   <>
                     <Text style={styles.subhead}>BIRDING INTERESTS</Text>
                     <Text style={styles.bodyText}>{profile.interests.join(' · ')}</Text>
+                  </>
+                ) : null}
+                {profile.preferred_discovery_region ? (
+                  <>
+                    <Text style={styles.subhead}>PREFERRED DISCOVERY REGION</Text>
+                    <Text style={styles.bodyText}>{profile.preferred_discovery_region}</Text>
                   </>
                 ) : null}
               </View>

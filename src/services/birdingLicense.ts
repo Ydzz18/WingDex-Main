@@ -26,7 +26,6 @@ export type BirdingLicenseProfile = {
   avatar_path: string | null;
   license_number: string;
   license_issued_at: string;
-  sharing_enabled: boolean;
 };
 
 export type PublicBirdingLicense = {
@@ -41,6 +40,7 @@ export type PublicBirdingLicense = {
   favorite_bird: string | null;
   preferred_categories: string[];
   interests: string[];
+  preferred_discovery_region: string | null;
   license_issued_at: string;
   species_count: number;
   earned_badges: { rank_code: string; rank_title: string; unlocked_at: string }[];
@@ -106,7 +106,7 @@ export async function getBirdingLicenseProfile(): Promise<BirdingLicenseProfile>
   if (!userId) throw new Error('Sign in again to open your license.');
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,username,display_name,country,city,bio,home_region_code,home_region_name,favorite_bird,preferred_categories,interests,preferred_discovery_region,avatar_path,license_number,license_issued_at,sharing_enabled')
+    .select('id,username,display_name,country,city,bio,home_region_code,home_region_name,favorite_bird,preferred_categories,interests,preferred_discovery_region,avatar_path,license_number,license_issued_at')
     .eq('id', userId)
     .single();
   if (error) throw error;
@@ -128,7 +128,6 @@ export async function saveBirdingLicenseProfile(input: {
   preferredCategories: string[];
   interests: string[];
   preferredDiscoveryRegion: string;
-  sharingEnabled?: boolean;
 }) {
   if (!supabase) throw new Error('Wingdex account sync is unavailable.');
   const { data, error } = await supabase.rpc('complete_birding_license_profile', {
@@ -143,18 +142,10 @@ export async function saveBirdingLicenseProfile(input: {
     p_preferred_categories: input.preferredCategories,
     p_interests: input.interests,
     p_preferred_discovery_region: input.preferredDiscoveryRegion,
-    p_sharing_enabled: input.sharingEnabled ?? false,
   });
   if (error) throw error;
   notifyLicenseAccessChanged();
   return data as { license_number: string };
-}
-
-export async function setBirdingLicenseSharing(enabled: boolean) {
-  if (!supabase) throw new Error('Wingdex account sync is unavailable.');
-  const { data, error } = await supabase.rpc('set_birding_license_sharing', { p_enabled: enabled });
-  if (error) throw error;
-  if (data !== true) throw new Error('Sharing could not be changed. Complete your adult profile first.');
 }
 
 export async function uploadProfilePhoto(uri: string): Promise<string> {
@@ -197,6 +188,13 @@ export async function getPublicBirdingLicense(licenseNumber: string): Promise<Pu
 
 export function getPublicLicenseUrl(licenseNumber: string) {
   const configuredOrigin = process.env.EXPO_PUBLIC_WINGDEX_PUBLIC_URL?.trim().replace(/\/+$/, '');
-  if (!configuredOrigin || !/^https:\/\//i.test(configuredOrigin)) return null;
-  return `${configuredOrigin}/license/${encodeURIComponent(licenseNumber)}`;
+  if (!configuredOrigin) return null;
+  try {
+    const origin = new URL(configuredOrigin);
+    if (origin.protocol !== 'https:' || !origin.hostname || origin.username || origin.password
+      || origin.pathname !== '/' || origin.search || origin.hash) return null;
+    return new URL(`/license/${encodeURIComponent(licenseNumber)}`, origin.origin).toString();
+  } catch {
+    return null;
+  }
 }

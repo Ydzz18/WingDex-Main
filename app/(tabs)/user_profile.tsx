@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -33,7 +32,6 @@ import {
   getProfilePhotoUrl,
   getPublicLicenseUrl,
   saveBirdingLicenseProfile,
-  setBirdingLicenseSharing,
   uploadProfilePhoto,
   type BirdingLicenseProfile,
 } from '../../src/services/birdingLicense';
@@ -94,7 +92,7 @@ export default function UserProfileScreen() {
       ? item.ebirdSpecies.speciesCode.toLowerCase()
       : null)
     .filter((code): code is string => Boolean(code))).size, [observations]);
-  const publicUrl = profile?.sharing_enabled ? getPublicLicenseUrl(profile.license_number) : null;
+  const publicUrl = profile ? getPublicLicenseUrl(profile.license_number) : null;
   const currentRank = useMemo(() => [...universalRegionalRankDefinitions].reverse().find((rank) =>
     achievements.some((achievement) => achievement.rank_code === rank.id)
       || (computedRank?.regionCode === profile?.home_region_code && computedRank?.rankCode === rank.id),
@@ -179,21 +177,6 @@ export default function UserProfileScreen() {
     return () => { active = false; };
   }, [observations, profile]);
 
-  const toggleSharing = async (enabled: boolean) => {
-    if (!profile) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await setBirdingLicenseSharing(enabled);
-      setProfile({ ...profile, sharing_enabled: enabled });
-      setNotice(enabled ? 'Your public license is now available.' : 'Sharing is off. Your public license route is unavailable.');
-    } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : 'Sharing could not be changed.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const saveEdits = async () => {
     if (!profile) return;
     const selectedRegion = findPhilippineRegion(editRegionCode);
@@ -216,7 +199,6 @@ export default function UserProfileScreen() {
         preferredCategories: editCategories.split(',').map((item) => item.trim()).filter(Boolean).slice(0, 12),
         interests: editInterests.split(',').map((item) => item.trim()).filter(Boolean).slice(0, 20),
         preferredDiscoveryRegion: editDiscoveryRegion.trim(),
-        sharingEnabled: profile.sharing_enabled,
       });
       await loadProfile();
       setNotice('Your license details have been saved.');
@@ -301,9 +283,9 @@ export default function UserProfileScreen() {
               <Text style={styles.wordmark}>WINGDEX <Text style={styles.wordmarkSub}>FIELD LICENSE</Text></Text>
               <Text style={styles.toplineHint}>A personal record of the wild.</Text>
             </View>
-            <View style={[styles.privacyPill, profile.sharing_enabled ? styles.privacyPillPublic : null]}>
-              {profile.sharing_enabled ? <ShieldCheck color={colors.ink} size={13} /> : <LockKeyhole color={colors.inkSoft} size={12} />}
-              <Text style={styles.privacyPillText}>{profile.sharing_enabled ? 'PUBLIC' : 'PRIVATE'}</Text>
+            <View accessibilityLabel="Public license" style={[styles.privacyPill, styles.privacyPillPublic]}>
+              <ShieldCheck color={colors.ink} size={13} />
+              <Text style={styles.privacyPillText}>PUBLIC</Text>
             </View>
           </View>
 
@@ -386,10 +368,10 @@ export default function UserProfileScreen() {
                       <QRCode value={publicUrl} size={80} backgroundColor="#FFFDF5" color="#183025" quietZone={3} />
                     ) : (
                       <View style={styles.privateQr}>
-                        {profile.sharing_enabled ? <QrCode color="#748078" size={28} /> : <LockKeyhole color="#748078" size={24} />}
+                        <QrCode color="#748078" size={28} />
                       </View>
                     )}
-                    <Text style={styles.qrCaption}>{publicUrl ? 'SCAN LICENSE' : profile.sharing_enabled ? 'SET PUBLIC URL' : 'PRIVATE'}</Text>
+                    <Text style={styles.qrCaption}>{publicUrl ? 'SCAN LICENSE' : 'SET PUBLIC URL'}</Text>
                   </View>
                 </View>
               </View>
@@ -437,7 +419,7 @@ export default function UserProfileScreen() {
                   <Text style={styles.metaKicker}>ISSUE DATE</Text>
                   <Text style={styles.reverseBody}>{new Date(profile.license_issued_at).toLocaleDateString()}</Text>
                   <Text style={[styles.metaKicker, { marginTop: 13 }]}>VERIFICATION</Text>
-                  <Text style={styles.reverseBody}>{publicUrl ?? 'Public profile URL is not configured.'}</Text>
+                  <Text style={styles.reverseBody}>{publicUrl ?? 'Public profile URL is not configured. Set EXPO_PUBLIC_WINGDEX_PUBLIC_URL to your public HTTPS web origin.'}</Text>
                   <Text style={styles.conservation}>PROTECT THE HABITAT. THE BIRDS WILL FOLLOW.</Text>
                 </View>
               )}
@@ -456,10 +438,10 @@ export default function UserProfileScreen() {
                 </View>
               </View>
               <Pressable onPress={() => setActiveTab('settings')} style={styles.sharePanel}>
-                <View style={styles.shareIcon}><LockKeyhole color={colors.ink} size={18} /></View>
+                <View style={styles.shareIcon}><ShieldCheck color={colors.ink} size={18} /></View>
                 <View style={styles.sharePanelCopy}>
-                  <Text style={styles.sharePanelTitle}>{profile.sharing_enabled ? 'Your profile is public' : 'Private by default'}</Text>
-                  <Text style={styles.sharePanelBody}>{profile.sharing_enabled ? 'Turn sharing off any time to disable the public route.' : 'Only you can see this license until you opt in to sharing.'}</Text>
+                  <Text style={styles.sharePanelTitle}>Your license is public</Text>
+                  <Text style={styles.sharePanelBody}>Your license profile is visible to anyone with its link. Email and date of birth remain private.</Text>
                 </View>
                 <ChevronRight color={colors.muted} size={18} />
               </Pressable>
@@ -538,7 +520,7 @@ export default function UserProfileScreen() {
           {activeTab === 'settings' && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Profile & privacy</Text>
-              <Text style={styles.sectionSubtitle}>Your sign-in details and date of birth stay out of public profile data.</Text>
+              <Text style={styles.sectionSubtitle}>Your sign-in email and date of birth are private and are never included in the public license.</Text>
               <Pressable accessibilityRole="button" disabled={photoSaving} onPress={() => void changeAvatar()} style={styles.avatarPicker}>
                 {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.settingsAvatar} /> : <View style={styles.settingsAvatarFallback}><ImagePlus color={colors.inkSoft} size={20} /></View>}
                 <View style={styles.avatarCopy}><Text style={styles.avatarTitle}>{photoSaving ? 'Saving photo…' : 'Change profile photo'}</Text><Text style={styles.avatarSub}>Private storage · optional</Text></View>
@@ -575,21 +557,15 @@ export default function UserProfileScreen() {
                 {!saving && <Check color={colors.white} size={17} />}
               </Pressable>
               <View style={styles.privacySetting}>
+                <ShieldCheck color={colors.ink} size={18} />
                 <View style={styles.privacySettingCopy}>
-                  <Text style={styles.sharePanelTitle}>Public license</Text>
-                  <Text style={styles.sharePanelBody}>Private by default. Switch on to let anyone with your license link see the safe profile projection.</Text>
+                  <Text style={styles.sharePanelTitle}>PUBLIC LICENSE</Text>
+                  <Text style={styles.sharePanelBody}>Anyone with your license link can see your username, display name, bio, country and city, home region and badge identity, favorite bird, habitat preferences, birding interests, discovery preference, issue date, species total, and earned badges. Email and date of birth are not public.</Text>
                 </View>
-                <Switch
-                  accessibilityLabel="Share public license"
-                  disabled={saving}
-                  onValueChange={(value) => void toggleSharing(value)}
-                  thumbColor={profile.sharing_enabled ? colors.white : '#F6F5EE'}
-                  trackColor={{ false: '#BBC4B9', true: colors.inkSoft }}
-                  value={profile.sharing_enabled}
-                />
               </View>
-              {profile.sharing_enabled && !publicUrl && <Text style={styles.configHint}>QR sharing needs EXPO_PUBLIC_WINGDEX_PUBLIC_URL set to your public HTTPS web origin.</Text>}
-              {publicUrl && profile.sharing_enabled ? <Text style={styles.publicUrl}>{publicUrl}</Text> : null}
+              {!publicUrl
+                ? <Text style={styles.configHint}>Public link and QR are unavailable until EXPO_PUBLIC_WINGDEX_PUBLIC_URL is set to a valid public HTTPS web origin.</Text>
+                : <Text accessibilityLabel="Public license URL" selectable style={styles.publicUrl}>{publicUrl}</Text>}
               <View style={styles.accountBlock}>
                 <Text style={styles.label}>SIGNED IN AS</Text>
                 <Text style={styles.accountEmail}>{email || 'Wingdex account'}</Text>
