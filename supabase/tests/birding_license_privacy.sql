@@ -1,6 +1,6 @@
 begin;
 
-select plan(11);
+select plan(12);
 
 insert into auth.users (
   id,
@@ -109,6 +109,32 @@ select is(
   null,
   'a nonexistent license returns no public profile'
 );
+
+select set_config('request.jwt.claim.sub', 'dddddddd-0000-4000-8000-000000000001', true);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"dddddddd-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select lives_ok(
+  $$select public.complete_birding_license_profile(
+    'public_test_birder',
+    'Public Test Birder',
+    'Philippines',
+    'Test City',
+    'Rollback-only public license fixture.',
+    'NCR',
+    'National Capital Region',
+    'Test bird',
+    array['Forest'],
+    array['Conservation'],
+    'National Capital Region',
+    true
+  )$$,
+  'an eligible authenticated user can issue a license without ambiguous license_number references'
+);
+reset role;
 
 set local role anon;
 
