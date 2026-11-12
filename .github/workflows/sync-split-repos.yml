@@ -36,15 +36,33 @@ jobs:
             push https://github.com/Ydzz18/WingDex-backend.git \
             "$split_commit:refs/heads/main"
 
-      - name: Split and push admin
+      - name: Sync and push admin
         env:
           DESTINATION_TOKEN: ${{ secrets.DESTINATION_TOKEN }}
         run: |
           set -euo pipefail
 
-          split_commit="$(git subtree split --prefix=admin)"
           auth="$(printf 'x-access-token:%s' "$DESTINATION_TOKEN" | base64 -w0)"
+          destination_dir="$RUNNER_TEMP/wingdex-admin"
 
           git -c "http.extraheader=AUTHORIZATION: basic $auth" \
-            push https://github.com/Ydzz18/WingDex-Admin.git \
-            "$split_commit:refs/heads/main"
+            clone --branch main --single-branch \
+            https://github.com/Ydzz18/WingDex-Admin.git "$destination_dir"
+
+          rsync --archive --delete \
+            --exclude='.git/' \
+            --exclude='LICENSE' \
+            "$GITHUB_WORKSPACE/admin/" "$destination_dir/"
+
+          git -C "$destination_dir" config user.name "github-actions[bot]"
+          git -C "$destination_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$destination_dir" add --all
+
+          if git -C "$destination_dir" diff --cached --quiet; then
+            echo "Admin repository is already up to date."
+          else
+            git -C "$destination_dir" commit -m "Sync admin from WingDex-Main (${GITHUB_SHA})"
+            git -C "$destination_dir" \
+              -c "http.extraheader=AUTHORIZATION: basic $auth" \
+              push origin HEAD:main
+          fi
