@@ -53,7 +53,7 @@ npm install
 npx expo start
 ```
 
-Open the QR code with Expo Go, or press `a` in the terminal for an Android emulator. Building/running iOS locally requires macOS; EAS Build can create iOS builds from the cloud.
+Use `npx expo start --web` to run the web version. The native MapLibre map is not supported in Expo Go; run `npm run android` with the Android SDK installed, or open the Metro QR code with a custom development build. Building/running iOS locally requires macOS and Xcode; EAS Build can create iOS builds from the cloud.
 
 ## Build an Android APK
 
@@ -61,7 +61,7 @@ The `preview` EAS profile creates an installable APK. Before building:
 
 1. Install the EAS CLI with `npm install --global eas-cli` and sign in using `eas login`.
 2. Run `eas build:configure` once to link this app to your Expo account.
-3. In the Expo dashboard, add these app environment variables to the `preview` environment: `EXPO_PUBLIC_WINGDEX_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Use your deployed HTTPS backend URL for the API. These `EXPO_PUBLIC_` values are included in the app; never add server secrets such as Gemini, eBird, or Supabase secret keys.
+3. In the Expo dashboard, add these app environment variables to the `preview` and `production` environments: `EXPO_PUBLIC_WINGDEX_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Use your deployed HTTPS backend URL for the API. These `EXPO_PUBLIC_` values are included in the app; never add server secrets such as Gemini, eBird, or Supabase secret keys.
 4. Start the APK build from the project root:
 
    ```sh
