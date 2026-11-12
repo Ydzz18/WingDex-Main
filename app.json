@@ -41,7 +41,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Wingdex uses the photo you choose to request a bird identification.",
-          "cameraPermission": false,
+          "cameraPermission": "Wingdex uses your camera to photograph birds for identification.",
           "microphonePermission": false
         }
       ],
