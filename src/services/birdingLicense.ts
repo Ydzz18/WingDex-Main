@@ -142,7 +142,14 @@ export async function saveBirdingLicenseProfile(input: {
     p_preferred_categories: input.preferredCategories,
     p_interests: input.interests,
     p_preferred_discovery_region: input.preferredDiscoveryRegion,
+    p_sharing_enabled: true,
   });
+  if (error?.code === '23505') {
+    throw new Error('That username is already in use. Choose another username.');
+  }
+  if (error?.code === 'PGRST202') {
+    throw new Error('The license service is out of date. Apply the latest Wingdex license migrations and try again.');
+  }
   if (error) throw error;
   notifyLicenseAccessChanged();
   return data as { license_number: string };
