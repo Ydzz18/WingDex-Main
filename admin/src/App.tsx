@@ -163,6 +163,10 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const requestGeneration = useRef(0);
+  const sessionUserId = useRef<string | null>(null);
+  const verifiedUserId = useRef<string | null>(null);
+  const accessTokenRef = useRef(session?.access_token);
+  accessTokenRef.current = session?.access_token;
 
   const invalidateAdminView = (error: unknown) => {
     if (!(error instanceof ApiError) || ![401, 403, 503].includes(error.status)) return;
@@ -184,11 +188,17 @@ export default function App() {
     supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
       if (error) setVerificationError('Could not restore your sign-in. Please sign in again.');
+      sessionUserId.current = data.session?.user.id ?? null;
       setSession(data.session);
       setAuthReady(true);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user.id ?? null;
+      const userChanged = nextUserId !== sessionUserId.current;
+      sessionUserId.current = nextUserId;
       setSession(nextSession);
+      if (!userChanged) return;
+      verifiedUserId.current = null;
       setVerificationError('');
       setAuthorized(false);
       setOverview(null);
@@ -204,17 +214,20 @@ export default function App() {
   }, []);
 
   const accessToken = session?.access_token;
+  const userId = session?.user.id;
   useEffect(() => {
-    if (!accessToken) {
+    if (!userId || !accessTokenRef.current) {
       setAuthorized(false);
       setOverview(null);
       return;
     }
+    if (verifiedUserId.current === userId) return;
     let active = true;
     setVerificationError('');
-    adminRequest<Overview>('/admin/overview', accessToken)
+    adminRequest<Overview>('/admin/overview', accessTokenRef.current)
       .then((data) => {
         if (!active) return;
+        verifiedUserId.current = userId;
         setOverview(data);
         setAuthorized(true);
       })
@@ -224,16 +237,17 @@ export default function App() {
         setVerificationError(error instanceof Error ? error.message : 'Admin access could not be verified.');
       });
     return () => { active = false; };
-  }, [accessToken]);
+  }, [userId]);
 
   const loadSection = useCallback(async () => {
-    if (!authorized || !accessToken) return;
+    const token = accessTokenRef.current;
+    if (!authorized || !token) return;
     const requestId = ++requestGeneration.current;
     setLoading(true);
     setLoadError('');
     try {
       if (activeSection === 'overview') {
-        const result = await adminRequest<Overview>('/admin/overview', accessToken);
+        const result = await adminRequest<Overview>('/admin/overview', token);
         if (requestId === requestGeneration.current) setOverview(result);
       } else {
         const query = new URLSearchParams({
@@ -243,7 +257,7 @@ export default function App() {
         });
         const data = await adminRequest<PageResult>(
           `/admin/${activeSection}?${query.toString()}`,
-          accessToken,
+          token,
         );
         if (requestId === requestGeneration.current) setPageData(data);
       }
@@ -254,7 +268,7 @@ export default function App() {
     } finally {
       if (requestId === requestGeneration.current) setLoading(false);
     }
-  }, [accessToken, activeSection, authorized, page, search]);
+  }, [activeSection, authorized, page, search]);
 
   useEffect(() => {
     void loadSection();

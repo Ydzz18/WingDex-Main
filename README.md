@@ -124,7 +124,7 @@ See the dedicated [Admin Portal README](./admin/README.md) for setup, local deve
 1. Apply the migration above and create or invite operator accounts through Supabase Auth.
 2. Add each approved account’s UUID to `backend/.env` as `ADMIN_USER_IDS`. Do not add a role field to client metadata as an authorization shortcut.
 3. Configure `admin/.env.local` from [`admin/.env.example`](./admin/.env.example) with `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_ADMIN_API_URL` (local default `http://localhost:3001`). These are browser-visible values; never add a secret/service-role key to the admin package.
-4. If operators use Google or Facebook, enable those Auth providers and allow the local portal URL (`http://localhost:4174`) and deployed portal URL in Supabase **Authentication → URL Configuration → Redirect URLs**.
+4. If operators use Google or Facebook, enable those Auth providers and add the local Admin URL (`http://localhost:4174/**`) and deployed Admin URL (for example, `https://admin.example.com/**`) to Supabase **Authentication → URL Configuration → Redirect URLs**. Keep **Site URL** set to the main website; the Admin asks Supabase to return to its current origin. If that origin is not allowlisted, Supabase falls back to Site URL and sends the operator to the main website. The Google OAuth app's authorized redirect URI remains Supabase's callback URL (`https://<project-ref>.supabase.co/auth/v1/callback`).
 5. In separate terminals, start `backend/` with `npm run dev`, then run:
 
    ```sh
