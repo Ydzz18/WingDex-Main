@@ -161,14 +161,22 @@ export default function NearbyScreen() {
     }
   };
 
-  const openDirections = async () => {
+  const openDirections = () => {
     if (!selectedSighting) return;
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedSighting.latitude},${selectedSighting.longitude}&travelmode=walking`;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('Could not open directions', 'Please try again or open your maps app.');
+    if (!location) {
+      Alert.alert('Location needed', 'Share your location first to get walking directions in Wingdex.');
+      return;
     }
+    router.push({
+      pathname: '/directions',
+      params: {
+        originLat: String(location.latitude),
+        originLng: String(location.longitude),
+        destinationLat: String(selectedSighting.latitude),
+        destinationLng: String(selectedSighting.longitude),
+        destinationName: selectedSighting.name,
+      },
+    });
   };
 
   return (
@@ -277,7 +285,7 @@ export default function NearbyScreen() {
           <Pressable
             onPress={() => void openDirections()}
             style={({ pressed }) => [styles.directionsButton, pressed && styles.buttonPressed]}
-            accessibilityRole="link"
+            accessibilityRole="button"
             accessibilityLabel={`Get walking directions to ${selectedSighting.name} sighting`}
           >
             <Footprints color={colors.white} size={18} strokeWidth={2.2} />
