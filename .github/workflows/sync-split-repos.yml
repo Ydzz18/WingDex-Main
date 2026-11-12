@@ -1,0 +1,50 @@
+name: Sync backend and admin repositories
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-split-repos-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out WingDex-Main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Split and push backend
+        env:
+          DESTINATION_TOKEN: ${{ secrets.DESTINATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          split_commit="$(git subtree split --prefix=backend)"
+          auth="$(printf 'x-access-token:%s' "$DESTINATION_TOKEN" | base64 -w0)"
+
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" \
+            push https://github.com/Ydzz18/WingDex-backend.git \
+            "$split_commit:refs/heads/main"
+
+      - name: Split and push admin
+        env:
+          DESTINATION_TOKEN: ${{ secrets.DESTINATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          split_commit="$(git subtree split --prefix=admin)"
+          auth="$(printf 'x-access-token:%s' "$DESTINATION_TOKEN" | base64 -w0)"
+
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" \
+            push https://github.com/Ydzz18/WingDex-Admin.git \
+            "$split_commit:refs/heads/main"
