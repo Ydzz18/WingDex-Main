@@ -16,6 +16,44 @@ export type IdentificationResult = {
 
 export const minimumConfidence = minimumObservationConfidence;
 
+const supportedImageMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
+
+function getImageMimeType(
+  mimeType: string | null,
+  fileType: string,
+  fileName: string,
+): string | null {
+  const candidates = [mimeType, fileType]
+    .map((value) => value?.split(';')[0]?.trim().toLowerCase())
+    .filter((value): value is string => Boolean(value));
+  const knownType = candidates.find((candidate) =>
+    supportedImageMimeTypes.has(candidate) || candidate === 'image/jpg');
+  if (knownType) return knownType === 'image/jpg' ? 'image/jpeg' : knownType;
+
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  switch (extension) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'heic':
+      return 'image/heic';
+    case 'heif':
+      return 'image/heif';
+    default:
+      return null;
+  }
+}
+
 export function isIdentificationConfigured(): boolean {
   return Boolean(process.env.EXPO_PUBLIC_WINGDEX_API_URL);
 }
@@ -32,18 +70,46 @@ export async function identifyBird(
 
   const formData = new FormData();
   const photoFile = new File(uri);
-  formData.append('photo', photoFile, fileName ?? photoFile.name);
+  const uploadFileName = fileName ?? photoFile.name;
+  const uploadMimeType = getImageMimeType(mimeType, photoFile.type, uploadFileName);
+  if (!uploadMimeType) {
+    throw new Error('This photo format is not supported. Choose a JPEG, PNG, WebP, or HEIC photo.');
+  }
+
+  const photoBlob = new Blob([await photoFile.arrayBuffer()], { type: uploadMimeType });
+  formData.append('photo', photoBlob, uploadFileName);
 
   const response = await fetch(`${baseUrl}/identify`, {
     method: 'POST',
     body: formData,
   });
 
+  const responseText = await response.text();
   if (!response.ok) {
-    throw new Error('Identification could not be completed. Try again later.');
+    let errorResult: unknown;
+    try {
+      errorResult = JSON.parse(responseText);
+    } catch {
+      errorResult = null;
+    }
+    if (
+      typeof errorResult === 'object' &&
+      errorResult !== null &&
+      'error' in errorResult &&
+      typeof errorResult.error === 'string' &&
+      errorResult.error.trim()
+    ) {
+      throw new Error(errorResult.error);
+    }
+    throw new Error(`Identification failed (HTTP ${response.status}). Please try again later.`);
   }
 
-  const result: unknown = await response.json();
+  let result: unknown;
+  try {
+    result = JSON.parse(responseText);
+  } catch {
+    throw new Error('The identification service returned an unreadable response.');
+  }
   const isBirdRegion = (region: unknown): region is BirdRegion =>
     typeof region === 'string' && birdRegions.some((knownRegion) => knownRegion === region);
   const isEbirdSpecies = (species: unknown): species is EbirdSpecies => {
