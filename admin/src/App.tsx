@@ -23,8 +23,9 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { philippineRegions } from '../../src/data/philippineRegions';
 
-type Section = 'overview' | 'users' | 'collections' | 'badges' | 'ranks' | 'announcements';
+type Section = 'overview' | 'users' | 'collections' | 'badges' | 'ranks' | 'regional-ranks' | 'announcements';
 type DataRow = Record<string, unknown>;
 type PageResult = { rows: DataRow[]; total: number };
 type Overview = {
@@ -64,7 +65,8 @@ const sectionMeta: Record<Section, { title: string; subtitle: string; icon: type
   users: { title: 'People in the field', subtitle: 'Account details and activity, for support context only.', icon: Users },
   collections: { title: 'Field records', subtitle: 'Saved species and observations across the community.', icon: BookOpen },
   badges: { title: 'Badges', subtitle: 'Shape the small rewards that mark a birder’s progress.', icon: Award },
-  ranks: { title: 'Ranks', subtitle: 'Set the published thresholds for a growing life list.', icon: Feather },
+  ranks: { title: 'Legacy ranks', subtitle: 'Existing global milestone records are preserved for compatibility; regional ranks use the universal ladder.', icon: Feather },
+  'regional-ranks': { title: 'Regional ranks', subtitle: 'Review the fixed six-rank ladder and versioned eBird snapshots for each Philippine region.', icon: Sparkles },
   announcements: { title: 'Announcements', subtitle: 'Write once, then publish to every Wingdex birder.', icon: Megaphone },
 };
 
@@ -151,6 +153,8 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [pageData, setPageData] = useState<PageResult>({ rows: [], total: 0 });
+  const [regionalRankDefinitions, setRegionalRankDefinitions] = useState<DataRow[]>([]);
+  const [refreshingRegion, setRefreshingRegion] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -174,6 +178,7 @@ export default function App() {
     setVerificationError(error.message);
     setOverview(null);
     setPageData({ rows: [], total: 0 });
+    setRegionalRankDefinitions([]);
     setSelectedUser(null);
     setEditorOpen(false);
     requestGeneration.current += 1;
@@ -249,6 +254,15 @@ export default function App() {
       if (activeSection === 'overview') {
         const result = await adminRequest<Overview>('/admin/overview', token);
         if (requestId === requestGeneration.current) setOverview(result);
+      } else if (activeSection === 'regional-ranks') {
+        const [definitions, snapshots] = await Promise.all([
+          adminRequest<DataRow[]>('/admin/regional-rank-definitions', token),
+          adminRequest<DataRow[]>('/admin/regional-rank-checklists', token),
+        ]);
+        if (requestId === requestGeneration.current) {
+          setRegionalRankDefinitions(definitions);
+          setPageData({ rows: snapshots, total: snapshots.length });
+        }
       } else {
         const query = new URLSearchParams({
           page: String(page),
@@ -383,6 +397,37 @@ export default function App() {
     }
   };
 
+  const refreshRegionalChecklist = async (regionCode: string) => {
+    if (!accessToken) return;
+    setRefreshingRegion(regionCode);
+    setLoadError('');
+    try {
+      await adminRequest(`/admin/regional-rank-checklists/${encodeURIComponent(regionCode)}/refresh`, accessToken, {
+        method: 'POST',
+      });
+      await loadSection();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'The regional checklist could not be refreshed.');
+      invalidateAdminView(error);
+    } finally {
+      setRefreshingRegion(null);
+    }
+  };
+
+  const publishRegionalChecklist = async (row: DataRow) => {
+    if (!accessToken || typeof row.id !== 'string') return;
+    const regionName = readText(row.region_name, 'this region');
+    const version = readText(row.checklist_version);
+    if (!window.confirm(`Publish ${version} for ${regionName}? This replaces the active checklist, but previously achieved ranks remain recorded.`)) return;
+    try {
+      await adminRequest(`/admin/regional-rank-checklists/${row.id}/publish`, accessToken, { method: 'POST' });
+      await loadSection();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'The checklist could not be published.');
+      invalidateAdminView(error);
+    }
+  };
+
   if (!authReady) {
     return <QuietScreen label="Restoring your secure sign-in…" />;
   }
@@ -427,7 +472,7 @@ export default function App() {
                 aria-current={activeSection === section ? 'page' : undefined}
               >
                 <MetaIcon size={18} strokeWidth={1.8} />
-                <span>{section === 'overview' ? 'Overview' : section[0].toUpperCase() + section.slice(1)}</span>
+                <span>{section === 'overview' ? 'Overview' : section === 'regional-ranks' ? 'Regional ranks' : section === 'ranks' ? 'Legacy ranks' : section[0].toUpperCase() + section.slice(1)}</span>
                 {section === 'announcements' && (overview?.publishedAnnouncements ?? 0) > 0 && (
                   <span className="nav-count">{overview?.publishedAnnouncements}</span>
                 )}
@@ -475,7 +520,18 @@ export default function App() {
 
           {activeSection === 'overview' && <OverviewSection data={overview} onNavigate={chooseSection} />}
 
-          {activeSection !== 'overview' && (
+          {activeSection === 'regional-ranks' && (
+            <RegionalRanksSection
+              definitions={regionalRankDefinitions}
+              snapshots={pageData.rows}
+              loading={loading}
+              refreshingRegion={refreshingRegion}
+              onRefresh={(regionCode) => void refreshRegionalChecklist(regionCode)}
+              onPublish={(row) => void publishRegionalChecklist(row)}
+            />
+          )}
+
+          {activeSection !== 'overview' && activeSection !== 'regional-ranks' && (
             <section className="data-panel">
               <div className="panel-toolbar">
                 <div><strong>{pageData.total.toLocaleString()}</strong><span> records</span></div>
@@ -506,7 +562,7 @@ export default function App() {
             </section>
           )}
 
-          <footer className="page-footer"><span>Wingdex field operations</span><span>People and collections are view-only.</span></footer>
+          <footer className="page-footer"><span>Wingdex field operations</span><span>{activeSection === 'regional-ranks' ? 'Checklist publishing is controlled and versioned.' : 'People and collections are view-only.'}</span></footer>
         </div>
       </main>
 
@@ -686,6 +742,113 @@ function OverviewSection({ data, onNavigate }: { data: Overview | null; onNaviga
   );
 }
 
+function RegionalRanksSection({
+  definitions,
+  snapshots,
+  loading,
+  refreshingRegion,
+  onRefresh,
+  onPublish,
+}: {
+  definitions: DataRow[];
+  snapshots: DataRow[];
+  loading: boolean;
+  refreshingRegion: string | null;
+  onRefresh: (regionCode: string) => void;
+  onPublish: (row: DataRow) => void;
+}) {
+  return (
+    <div className="regional-ranks-workspace">
+      <section className="regional-ladder-panel">
+        <div className="section-panel-heading">
+          <div><div className="eyebrow">ONE UNIVERSAL LADDER</div><h2>Regional rank definitions</h2></div>
+          <span className="rule-label">Fixed · six ranks</span>
+        </div>
+        {loading && definitions.length === 0 ? <TableLoading /> : (
+          <div className="regional-ladder-list">
+            {definitions.map((rank) => (
+              <article className="regional-ladder-row" key={String(rank.rank_code)}>
+                <span className="regional-ladder-order">{String(rank.rank_order).padStart(2, '0')}</span>
+                <div>
+                  <strong>{readText(rank.title)}</strong>
+                  <span>{readText(rank.description, '')}</span>
+                </div>
+                <span className="regional-gate">
+                  {rank.threshold_type === 'first_species' ? '1 species' : `${readCount(rank.threshold_value)}%`}
+                </span>
+              </article>
+            ))}
+            {definitions.length === 0 && <div className="subtle-empty">Universal definitions are not available. Apply the regional-ranks database migration.</div>}
+          </div>
+        )}
+        <p className="field-hint">Hatchling unlocks at exactly one verified species. Remaining gates use ceiling-rounded checklist percentages; rank definitions are intentionally not editable per region.</p>
+      </section>
+
+      <section className="regional-snapshot-panel">
+        <div className="section-panel-heading">
+          <div><div className="eyebrow">VERSIONED EBIRD SOURCES</div><h2>Regional checklist snapshots</h2></div>
+          <span className="rule-label">{snapshots.length} versions</span>
+        </div>
+        {loading && snapshots.length === 0 ? <TableLoading /> : (
+          <div className="regional-snapshot-list">
+            {philippineRegions.map((region) => {
+              const history = snapshots
+                .filter((snapshot) => snapshot.region_code === region.code)
+                .sort((left, right) => String(right.snapshot_as_of ?? '').localeCompare(String(left.snapshot_as_of ?? '')));
+              const unmapped = 'unmappedAdministrativeUnits' in region ? region.unmappedAdministrativeUnits : [];
+              return (
+                <article className="regional-snapshot-region" key={region.code}>
+                  <div className="regional-snapshot-heading">
+                    <div>
+                      <strong>{region.name}</strong>
+                      <span>{region.code} · PSGC {region.psgc}</span>
+                    </div>
+                    <button
+                      className="button button--outline regional-refresh"
+                      onClick={() => onRefresh(region.code)}
+                      disabled={loading || refreshingRegion === region.code || unmapped.length > 0}
+                      title={unmapped.length ? `Missing eBird subregion mapping: ${unmapped.join(', ')}` : undefined}
+                    >
+                      <Activity size={14} />
+                      {refreshingRegion === region.code ? 'Refreshing…' : unmapped.length ? 'Mapping needed' : 'Refresh'}
+                    </button>
+                  </div>
+                  {unmapped.length > 0 && (
+                    <div className="regional-mapping-warning">
+                      eBird does not list a verified all-time subregion mapping for {unmapped.join(', ')}. Refresh and publish are blocked until resolved.
+                    </div>
+                  )}
+                  {history.length === 0 ? (
+                    <div className="regional-no-snapshot">No validated snapshot has been published for this region.</div>
+                  ) : history.map((snapshot) => (
+                    <div
+                      className={`regional-snapshot-version ${snapshot.is_published ? 'regional-snapshot-version--active' : ''}`}
+                      key={String(snapshot.id)}
+                    >
+                      <div className="regional-version-main">
+                        <strong>{readText(snapshot.checklist_version)}</strong>
+                        <span>{readCount(snapshot.eligible_species_count).toLocaleString()} eligible species · as of {formatDate(snapshot.snapshot_as_of)}</span>
+                        <code>{readText(snapshot.checklist_hash)}</code>
+                      </div>
+                      {snapshot.is_published ? (
+                        <span className="status status--green"><span />Active</span>
+                      ) : (
+                        <button className="text-button" onClick={() => onPublish(snapshot)} disabled={loading}>
+                          Publish version
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function DataTable({
   section,
   rows,
@@ -813,7 +976,7 @@ function ContentEditor({
             <>
               <label>Unique identified species required<input type="number" min={1} max={1000000} required value={draft.threshold} onChange={(event) => change('threshold', Number(event.target.value))} /></label>
               <label className="toggle-field"><span>Publish this rank in the app</span><input type="checkbox" checked={draft.is_published} onChange={(event) => change('is_published', event.target.checked)} /></label>
-              <p className="field-hint">Thresholds must be unique. Ranks appear in ascending order in the mobile app.</p>
+              <p className="field-hint">Universal ladder: 1 / 10% / 25% / 50% / 75% / 100%. Thresholds must be unique and checklist snapshots stay versioned in the backend.</p>
             </>
           )}
           {section === 'announcements' && (

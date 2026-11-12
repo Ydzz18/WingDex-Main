@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
 import { birdRegions, type BirdRegion } from '../data/regions';
 import type { EbirdSpecies } from './ebird';
+import { minimumObservationConfidence } from './observationRules';
 
 export type IdentificationResult = {
   commonName: string | null;
@@ -13,7 +14,7 @@ export type IdentificationResult = {
   ebirdLookupError?: string;
 };
 
-export const minimumConfidence = 0.68;
+export const minimumConfidence = minimumObservationConfidence;
 
 export function isIdentificationConfigured(): boolean {
   return Boolean(process.env.EXPO_PUBLIC_WINGDEX_API_URL);

@@ -3,10 +3,12 @@ import { Directory, File, Paths } from 'expo-file-system';
 import type { BirdRegion } from '../data/regions';
 import type { IdentificationResult } from './identification';
 import type { UserLocation } from './location';
+import { minimumObservationConfidence } from './observationRules';
 import { getCollectionStorageKeys } from './collectionKeys';
 
 const COLLECTION_OWNER_KEY = 'wingdex.collection.owner.v1';
 let activeCollectionUserId: string | null = null;
+export const MIN_IDENTIFICATION_CONFIDENCE = minimumObservationConfidence;
 
 export function currentCollectionStorageKeys(userId?: string | null) {
   return getCollectionStorageKeys(userId === undefined ? activeCollectionUserId : userId);
@@ -132,7 +134,7 @@ export async function addBirdObservation(
   location: UserLocation | null = null,
 ): Promise<BirdObservation> {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const identified = Boolean(result.commonName && result.scientificName && result.confidence >= 0.68);
+  const identified = Boolean(result.commonName && result.scientificName && result.confidence >= MIN_IDENTIFICATION_CONFIDENCE);
   let photoUri: string | null = null;
 
   if (identified && selectedPhotoUri) {
