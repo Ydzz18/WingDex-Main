@@ -13,13 +13,14 @@ import {
   View,
 } from 'react-native';
 import * as ExpoLinking from 'expo-linking';
-import { router } from 'expo-router';
-import { ArrowLeft, ArrowUpRight, CodeXml, Feather, Leaf, LockKeyhole, Mail, ShieldCheck } from 'lucide-react-native';
+import { router, type Href } from 'expo-router';
+import { ArrowLeft, ArrowUpRight, CodeXml, Eye, EyeOff, Feather, Leaf, LockKeyhole, Mail, ShieldCheck } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isSupabaseConfigured, supabase } from '../src/services/supabase';
+import { getSelfReportedAge, submitPrivateBirthDate } from '../src/services/birdingLicense';
 import { colors } from '../src/theme';
 
 type AuthMode = 'login' | 'signup' | 'reset' | 'recovery';
@@ -47,9 +48,13 @@ function parseAuthUrl(link: string) {
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<AuthMode>('login');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [birthDate, setBirthDate] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [checkingSession, setCheckingSession] = useState(isSupabaseConfigured);
   const [submitting, setSubmitting] = useState(false);
@@ -218,6 +223,28 @@ export default function AuthScreen() {
       setNotice({ kind: 'error', text: 'Those passwords don’t match yet.' });
       return;
     }
+    if (mode === 'signup') {
+      if (!/^[a-zA-Z0-9_]{3,24}$/.test(username.trim())) {
+        setNotice({ kind: 'error', text: 'Choose a username of 3–24 letters, numbers, or underscores.' });
+        return;
+      }
+      const age = getSelfReportedAge(birthDate.trim());
+      if (age === null) {
+        setNotice({ kind: 'error', text: 'Enter your date of birth in YYYY-MM-DD format.' });
+        return;
+      }
+      if (age < 13) {
+        setNotice({ kind: 'error', text: 'You must be at least 13 to create a Wingdex account.' });
+        return;
+      }
+      if (age < 18) {
+        setNotice({
+          kind: 'error',
+          text: 'Wingdex cannot admit people under 18 until a real guardian-consent provider is configured. No consent has been verified.',
+        });
+        return;
+      }
+    }
     if (mode === 'recovery' && password !== confirmPassword) {
       setNotice({ kind: 'error', text: 'Those passwords don’t match yet.' });
       return;
@@ -229,16 +256,22 @@ export default function AuthScreen() {
         const { data, error } = await supabase.auth.signUp({
           email: normalizedEmail,
           password,
-          options: { emailRedirectTo: ExpoLinking.createURL('auth') },
+          options: {
+            emailRedirectTo: ExpoLinking.createURL('auth'),
+            data: { username: username.trim().toLowerCase() },
+          },
         });
         if (error) throw error;
         setPassword('');
         setConfirmPassword('');
+        if (data.session) {
+          await submitPrivateBirthDate(birthDate.trim()).catch(() => undefined);
+        }
         const message = data.session
           ? 'Your account is ready. Welcome to your Wingdex field journal.'
           : 'Check your inbox for a confirmation link to finish creating your account.';
         if (data.session) {
-          router.replace({ pathname: '/user_profile', params: { authNotice: message } });
+          router.replace('/complete-profile' as Href);
         } else {
           setNotice({ kind: 'success', text: message });
         }
@@ -502,6 +535,41 @@ export default function AuthScreen() {
                 )}
 
                 <View style={styles.form}>
+                  {mode === 'signup' && (
+                    <>
+                      <Text style={styles.label}>USERNAME</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          accessibilityLabel="Username"
+                          autoCapitalize="none"
+                          autoComplete="username"
+                          autoCorrect={false}
+                          onChangeText={setUsername}
+                          placeholder="field_birder"
+                          placeholderTextColor={colors.muted}
+                          style={styles.input}
+                          textContentType="username"
+                          value={username}
+                        />
+                      </View>
+                      <Text style={styles.label}>DATE OF BIRTH</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          accessibilityLabel="Date of birth"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          onChangeText={setBirthDate}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor={colors.muted}
+                          style={styles.input}
+                          value={birthDate}
+                        />
+                      </View>
+                      <Text style={styles.privacyNote}>
+                        Your self-reported date is checked privately and never added to public profile or sign-in metadata. Under-18 accounts cannot enter while guardian verification is unavailable.
+                      </Text>
+                    </>
+                  )}
                   <Text style={styles.label}>EMAIL ADDRESS</Text>
                   <View style={styles.inputWrap}>
                     <Mail color={colors.muted} size={18} />
@@ -543,11 +611,19 @@ export default function AuthScreen() {
                           placeholder={mode === 'recovery' || mode === 'signup' ? 'At least 8 characters' : 'Your password'}
                           placeholderTextColor={colors.muted}
                           returnKeyType={mode === 'login' ? 'go' : 'next'}
-                          secureTextEntry
+                          secureTextEntry={!showPassword}
                           style={styles.input}
                           textContentType={mode === 'signup' || mode === 'recovery' ? 'newPassword' : 'password'}
                           value={password}
                         />
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                          onPress={() => setShowPassword(!showPassword)}
+                          hitSlop={8}
+                        >
+                          {showPassword ? <EyeOff color={colors.muted} size={17} /> : <Eye color={colors.muted} size={17} />}
+                        </Pressable>
                       </View>
                     </>
                   )}
@@ -566,11 +642,19 @@ export default function AuthScreen() {
                           placeholder="Enter your password again"
                           placeholderTextColor={colors.muted}
                           returnKeyType="go"
-                          secureTextEntry
+                          secureTextEntry={!showConfirmPassword}
                           style={styles.input}
                           textContentType="newPassword"
                           value={confirmPassword}
                         />
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'}
+                          onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                          hitSlop={8}
+                        >
+                          {showConfirmPassword ? <EyeOff color={colors.muted} size={17} /> : <Eye color={colors.muted} size={17} />}
+                        </Pressable>
                       </View>
                     </>
                   )}
@@ -605,7 +689,7 @@ export default function AuthScreen() {
                   </Pressable>
 
                   {mode === 'signup' && (
-                    <Text style={styles.privacyNote}>Your email stays yours. We’ll only use it to protect your account.</Text>
+                    <Text style={styles.privacyNote}>Your email stays private. We’ll only use it to protect your account.</Text>
                   )}
                   {mode === 'reset' && (
                     <Text style={styles.privacyNote}>For your privacy, we’ll show the same confirmation either way.</Text>

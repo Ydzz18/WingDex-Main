@@ -1,0 +1,202 @@
+import { supabase } from './supabase';
+import type { PhilippineRegionCode } from '../data/philippineRegions';
+
+export type AgeStatus = 'missing' | 'under_13' | 'minor_provider_required' | 'adult';
+
+export type LicenseAccessState = {
+  age_status: AgeStatus;
+  is_adult: boolean;
+  profile_complete: boolean;
+  license_number: string | null;
+};
+
+export type BirdingLicenseProfile = {
+  id: string;
+  username: string;
+  display_name: string;
+  country: string;
+  city: string | null;
+  bio: string | null;
+  home_region_code: PhilippineRegionCode;
+  home_region_name: string;
+  favorite_bird: string | null;
+  preferred_categories: string[];
+  interests: string[];
+  preferred_discovery_region: string | null;
+  avatar_path: string | null;
+  license_number: string;
+  license_issued_at: string;
+  sharing_enabled: boolean;
+};
+
+export type PublicBirdingLicense = {
+  license_number: string;
+  username: string;
+  display_name: string;
+  bio: string | null;
+  country: string;
+  city: string | null;
+  home_region_code: PhilippineRegionCode | null;
+  home_region_name: string | null;
+  favorite_bird: string | null;
+  preferred_categories: string[];
+  interests: string[];
+  license_issued_at: string;
+  species_count: number;
+  earned_badges: { rank_code: string; rank_title: string; unlocked_at: string }[];
+};
+
+export function getSelfReportedAge(birthDate: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return null;
+  const date = new Date(`${birthDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== birthDate) return null;
+  const today = new Date();
+  let age = today.getUTCFullYear() - date.getUTCFullYear();
+  if (today.getUTCMonth() < date.getUTCMonth()
+    || (today.getUTCMonth() === date.getUTCMonth() && today.getUTCDate() < date.getUTCDate())) age -= 1;
+  return age >= 0 ? age : null;
+}
+
+const accessListeners = new Set<() => void>();
+
+export function subscribeToLicenseAccess(callback: () => void) {
+  accessListeners.add(callback);
+  return () => accessListeners.delete(callback);
+}
+
+export function notifyLicenseAccessChanged() {
+  accessListeners.forEach((callback) => callback());
+}
+
+export async function getLicenseAccessState(): Promise<LicenseAccessState> {
+  if (!supabase) throw new Error('Wingdex account sync is unavailable.');
+  const { data, error } = await supabase.rpc('my_license_access_state');
+  if (error) throw error;
+  if (!data || typeof data !== 'object') throw new Error('Your account access status could not be verified.');
+  const value = data as Record<string, unknown>;
+  const status = value.age_status;
+  if (status !== 'missing' && status !== 'under_13'
+    && status !== 'minor_provider_required' && status !== 'adult') {
+    throw new Error('Your account access status could not be verified.');
+  }
+  return {
+    age_status: status,
+    is_adult: value.is_adult === true,
+    profile_complete: value.profile_complete === true,
+    license_number: typeof value.license_number === 'string' ? value.license_number : null,
+  };
+}
+
+export async function submitPrivateBirthDate(birthDate: string): Promise<AgeStatus> {
+  if (!supabase) throw new Error('Wingdex account sync is unavailable.');
+  const { data, error } = await supabase.rpc('submit_private_birth_date', { p_birth_date: birthDate });
+  if (error) throw error;
+  if (data !== 'under_13' && data !== 'minor_provider_required' && data !== 'adult') {
+    throw new Error('Your age could not be confirmed.');
+  }
+  notifyLicenseAccessChanged();
+  return data;
+}
+
+export async function getBirdingLicenseProfile(): Promise<BirdingLicenseProfile> {
+  if (!supabase) throw new Error('Wingdex account sync is unavailable.');
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error('Sign in again to open your license.');
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,username,display_name,country,city,bio,home_region_code,home_region_name,favorite_bird,preferred_categories,interests,preferred_discovery_region,avatar_path,license_number,license_issued_at,sharing_enabled')
+    .eq('id', userId)
+    .single();
+  if (error) throw error;
+  if (!data?.license_number || !data.license_issued_at || !data.home_region_code) {
+    throw new Error('Your Birding License is still being prepared.');
+  }
+  return data as unknown as BirdingLicenseProfile;
+}
+
+export async function saveBirdingLicenseProfile(input: {
+  username: string;
+  displayName: string;
+  country: string;
+  city: string;
+  bio: string;
+  homeRegionCode: PhilippineRegionCode;
+  homeRegionName: string;
+  favoriteBird: string;
+  preferredCategories: string[];
+  interests: string[];
+  preferredDiscoveryRegion: string;
+  sharingEnabled?: boolean;
+}) {
+  if (!supabase) throw new Error('Wingdex account sync is unavailable.');
+  const { data, error } = await supabase.rpc('complete_birding_license_profile', {
+    p_username: input.username,
+    p_display_name: input.displayName,
+    p_country: input.country,
+    p_city: input.city,
+    p_bio: input.bio,
+    p_home_region_code: input.homeRegionCode,
+    p_home_region_name: input.homeRegionName,
+    p_favorite_bird: input.favoriteBird,
+    p_preferred_categories: input.preferredCategories,
+    p_interests: input.interests,
+    p_preferred_discovery_region: input.preferredDiscoveryRegion,
+    p_sharing_enabled: input.sharingEnabled ?? false,
+  });
+  if (error) throw error;
+  notifyLicenseAccessChanged();
+  return data as { license_number: string };
+}
+
+export async function setBirdingLicenseSharing(enabled: boolean) {
+  if (!supabase) throw new Error('Wingdex account sync is unavailable.');
+  const { data, error } = await supabase.rpc('set_birding_license_sharing', { p_enabled: enabled });
+  if (error) throw error;
+  if (data !== true) throw new Error('Sharing could not be changed. Complete your adult profile first.');
+}
+
+export async function uploadProfilePhoto(uri: string): Promise<string> {
+  if (!supabase) throw new Error('Wingdex account sync is unavailable.');
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error('Sign in again before adding a profile photo.');
+  const response = await fetch(uri);
+  const photo = await response.blob();
+  const path = `${userId}/${Date.now()}.jpg`;
+  const { error: uploadError } = await supabase.storage
+    .from('profile-photos')
+    .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: false });
+  if (uploadError) throw uploadError;
+  const { error: updateError } = await supabase.from('profiles')
+    .update({ avatar_path: path })
+    .eq('id', userId);
+  if (updateError) {
+    await supabase.storage.from('profile-photos').remove([path]).catch(() => undefined);
+    throw updateError;
+  }
+  const { data, error } = await supabase.storage.from('profile-photos').createSignedUrl(path, 60 * 60);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function getProfilePhotoUrl(path: string | null): Promise<string | null> {
+  if (!supabase || !path) return null;
+  const { data, error } = await supabase.storage.from('profile-photos').createSignedUrl(path, 60 * 60);
+  return error ? null : data.signedUrl;
+}
+
+export async function getPublicBirdingLicense(licenseNumber: string): Promise<PublicBirdingLicense | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('public_birding_license', { p_license_number: licenseNumber });
+  if (error) throw error;
+  return data && typeof data === 'object' ? data as PublicBirdingLicense : null;
+}
+
+export function getPublicLicenseUrl(licenseNumber: string) {
+  const configuredOrigin = process.env.EXPO_PUBLIC_WINGDEX_PUBLIC_URL?.trim().replace(/\/+$/, '');
+  if (!configuredOrigin || !/^https:\/\//i.test(configuredOrigin)) return null;
+  return `${configuredOrigin}/license/${encodeURIComponent(licenseNumber)}`;
+}

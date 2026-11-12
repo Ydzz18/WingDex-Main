@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { BookOpenText, MapPin, ScanLine, Trophy, Bookmark } from 'lucide-react-native';
+import { BadgeCheck, BookOpenText, MapPin, ScanLine, Bookmark } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 export default function TabLayout() {
@@ -71,18 +71,19 @@ export default function TabLayout() {
       <Tabs.Screen
         name="ranks"
         options={{
-          title: 'Ranks',
-          tabBarIcon: ({ focused, color }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
-              <Trophy color={focused ? '#192F27' : color} size={22} />
-            </View>
-          ),
+          href: null,
+          tabBarStyle: { display: 'none' },
         }}
       />
       <Tabs.Screen
         name="user_profile"
         options={{
-          href: null,
+          title: 'License',
+          tabBarIcon: ({ focused, color }) => (
+            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+              <BadgeCheck color={focused ? '#192F27' : color} size={22} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
