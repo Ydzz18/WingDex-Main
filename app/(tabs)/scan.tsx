@@ -1,8 +1,7 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { ActivityIndicator, Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { ActivityIndicator, AppState, Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
@@ -16,7 +15,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CameraView as CameraViewType } from 'expo-camera';
 import { useSavedBirds } from '../../src/hooks/useSavedBirds';
 import {
@@ -27,8 +26,6 @@ import {
 } from '../../src/services/identification';
 import { getCurrentLocation, type UserLocation } from '../../src/services/location';
 import { colors } from '../../src/theme';
-
-const CAMERA_PERMISSION_ASKED_KEY = 'wingdex.camera-permission-asked.v1';
 
 type CapturedPhoto = {
   uri: string;
@@ -41,8 +38,8 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const cameraRef = useRef<CameraViewType>(null);
   const [permission, requestCameraPermission, getCameraPermission] = useCameraPermissions();
-  const permissionRequestAttempted = useRef(false);
   const { addObservation } = useSavedBirds();
+  const [screenFocused, setScreenFocused] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
@@ -64,29 +61,54 @@ export default function ScanScreen() {
   const cameraGranted = Boolean(permission?.granted);
   const busy = capturing || identifying || choosingPhoto || saving;
 
-  useEffect(() => {
-    if (!cameraSupportedInApp || !permission || permissionRequestAttempted.current) return;
-    permissionRequestAttempted.current = true;
+  useFocusEffect(useCallback(() => {
     let active = true;
+    setScreenFocused(true);
+    setCameraReady(false);
+    setCameraError(false);
+    setTorchEnabled(false);
 
-    const requestPermissionOnce = async () => {
+    if (!identificationInProgress.current && !saveInProgress.current) {
+      setPhoto(null);
+      setResult(null);
+      setIdentificationError(null);
+      setSaveError(false);
+      setSaveLocationError(null);
+      setSaved(false);
+      setGalleryError(null);
+    }
+
+    const prepareCamera = async () => {
       try {
-        const alreadyAsked = await AsyncStorage.getItem(CAMERA_PERMISSION_ASKED_KEY);
-        if (!active) return;
-        if (permission.granted || !permission.canAskAgain || alreadyAsked) return;
-
-        await AsyncStorage.setItem(CAMERA_PERMISSION_ASKED_KEY, 'true');
-        if (active) await requestCameraPermission();
+        const currentPermission = await getCameraPermission();
+        if (!active || currentPermission.granted || !currentPermission.canAskAgain) return;
+        await requestCameraPermission();
       } catch {
         if (active) setCameraError(true);
       }
     };
 
-    void requestPermissionOnce();
+    if (cameraSupportedInApp) void prepareCamera();
     return () => {
       active = false;
+      setScreenFocused(false);
+      setCameraReady(false);
+      setTorchEnabled(false);
     };
-  }, [cameraSupportedInApp, permission, requestCameraPermission]);
+  }, [cameraSupportedInApp, getCameraPermission, requestCameraPermission]));
+
+  useEffect(() => {
+    if (!cameraSupportedInApp) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void getCameraPermission()
+        .then((currentPermission) => {
+          if (currentPermission.granted) setCameraError(false);
+        })
+        .catch(() => setCameraError(true));
+    });
+    return () => subscription.remove();
+  }, [cameraSupportedInApp, getCameraPermission]);
 
   const saveObservation = async (
     resultToSave: IdentificationResult,
@@ -247,7 +269,11 @@ export default function ScanScreen() {
 
   const checkCameraPermission = async () => {
     try {
-      await getCameraPermission();
+      const currentPermission = await getCameraPermission();
+      if (!currentPermission.granted && currentPermission.canAskAgain) {
+        await requestCameraPermission();
+      }
+      setCameraError(false);
     } catch {
       setCameraError(true);
     }
@@ -272,7 +298,7 @@ export default function ScanScreen() {
     <View style={styles.screen}>
       {photo ? (
         <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFill} />
-      ) : cameraSupportedInApp && cameraGranted && !cameraError ? (
+      ) : screenFocused && cameraSupportedInApp && cameraGranted && !cameraError ? (
         <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
@@ -513,7 +539,9 @@ export default function ScanScreen() {
                     <Text style={styles.permissionButtonText}>Open device settings</Text>
                   </Pressable>
                   <Pressable accessibilityRole="button" onPress={checkCameraPermission} style={styles.settingsTextButton}>
-                    <Text style={styles.settingsText}>Check permission again</Text>
+                    <Text style={styles.settingsText}>
+                      {permission.canAskAgain ? 'Request camera access' : 'Check permission again'}
+                    </Text>
                   </Pressable>
                 </View>
               )}
