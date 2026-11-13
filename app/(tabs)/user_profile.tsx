@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   Pressable,
   ScrollView,
@@ -69,6 +71,7 @@ export default function UserProfileScreen() {
   const [computedRank, setComputedRank] = useState<{ regionCode: string; rankCode: string | null } | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('license');
   const [showReverse, setShowReverse] = useState(false);
+  const [licenseFlip] = useState(() => new Animated.Value(0));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -107,6 +110,26 @@ export default function UserProfileScreen() {
       .map((name) => name.trim());
     return [...new Set(names)].slice(0, 3);
   }, [profile?.favorite_bird, savedIds]);
+
+  useEffect(() => {
+    const animation = Animated.timing(licenseFlip, {
+      toValue: showReverse ? 1 : 0,
+      duration: 480,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [licenseFlip, showReverse]);
+
+  const frontRotation = licenseFlip.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+  const reverseRotation = licenseFlip.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['180deg', '360deg'],
+  });
 
   const loadProfile = useCallback(async () => {
     setError(null);
@@ -328,63 +351,19 @@ export default function UserProfileScreen() {
 
           {activeTab === 'license' && (
             <View style={styles.section}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={showReverse ? 'Show front of birding license' : 'Show back of birding license'}
-                onPress={() => setShowReverse((current) => !current)}
-                style={[styles.licenseCard, showReverse && styles.reverseLicenseCard]}
-              >
-                {showReverse ? (
-                  <>
-                    <View style={styles.cardHeader}>
-                      <View>
-                        <Text style={styles.cardWordmark}>WINGDEX</Text>
-                        <Text style={styles.cardCaption}>LICENSE REVERSE · FIELD NOTES</Text>
-                      </View>
-                      <Feather color="#D8BE87" size={22} />
-                    </View>
-                    <View style={styles.cardRule} />
-                    <Text style={styles.reverseIntro}>A life of looking closer, and the field badges earned along the way.</Text>
-                    <Text style={styles.reverseSectionTitle}>REGIONAL FIELD BADGES</Text>
-                    {achievements.length > 0 ? [...achievements]
-                      .sort((first, second) =>
-                        universalRegionalRankDefinitions.findIndex((rank) => rank.id === first.rank_code)
-                        - universalRegionalRankDefinitions.findIndex((rank) => rank.id === second.rank_code))
-                      .map((achievement) => {
-                        const rankIndex = universalRegionalRankDefinitions.findIndex((rank) => rank.id === achievement.rank_code);
-                        const rank = universalRegionalRankDefinitions[rankIndex];
-                        if (!rank || rankIndex < 0) return null;
-                        return (
-                          <View key={achievement.rank_code} style={styles.reverseBadgeRow}>
-                            <RegionalBadgeMark
-                              variant={rankIndex}
-                              identity={licenseBadgeIdentity}
-                              regionCode={profile.home_region_code}
-                              regionName={profile.home_region_name}
-                              size={37}
-                            />
-                            <View style={styles.reverseBadgeCopy}>
-                              <Text style={styles.reverseBadgeTitle}>{rank.title}</Text>
-                              <Text style={styles.reverseBadgeMeta}>EARNED {new Date(achievement.unlocked_at).toLocaleDateString()}</Text>
-                            </View>
-                          </View>
-                        );
-                      })
-                      : <Text style={styles.reverseBody}>Your regional badges will appear here as you reach their thresholds.</Text>}
-                    <View style={styles.reverseRule} />
-                    <Text style={styles.reverseSectionTitle}>TOP 3 FAVORITE BIRDS</Text>
-                    {favoriteBirds.length > 0 ? favoriteBirds.map((birdName, index) => (
-                      <View key={birdName} style={styles.favoriteBirdRow}>
-                        <Text style={styles.favoriteBirdNumber}>0{index + 1}</Text>
-                        <Text style={styles.favoriteBirdName}>{birdName}</Text>
-                      </View>
-                    )) : (
-                      <Text style={styles.reverseBody}>Choose a favorite in your profile or save birds to your collection to feature them here.</Text>
-                    )}
-                    <Text style={styles.conservation}>PROTECT THE HABITAT. THE BIRDS WILL FOLLOW.</Text>
-                  </>
-                ) : (
-                  <>
+              <View style={styles.licenseCard}>
+                <Animated.View
+                  accessibilityElementsHidden={showReverse}
+                  importantForAccessibility={showReverse ? 'no-hide-descendants' : 'auto'}
+                  pointerEvents={showReverse ? 'none' : 'auto'}
+                  style={[styles.licenseFace, { transform: [{ perspective: 1000 }, { rotateY: frontRotation }] }]}
+                >
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Show back of birding license"
+                    onPress={() => setShowReverse(true)}
+                    style={styles.licenseFaceContent}
+                  >
                     <View style={styles.cardContourOne} />
                     <View style={styles.cardContourTwo} />
                     <View style={styles.cardHeader}>
@@ -439,9 +418,69 @@ export default function UserProfileScreen() {
                         <Text style={styles.qrCaption}>{publicUrl ? 'SCAN LICENSE' : 'SET PUBLIC URL'}</Text>
                       </View>
                     </View>
-                  </>
-                )}
-              </Pressable>
+                  </Pressable>
+                </Animated.View>
+                <Animated.View
+                  accessibilityElementsHidden={!showReverse}
+                  importantForAccessibility={showReverse ? 'auto' : 'no-hide-descendants'}
+                  pointerEvents={showReverse ? 'auto' : 'none'}
+                  style={[styles.reverseFace, { transform: [{ perspective: 1000 }, { rotateY: reverseRotation }] }]}
+                >
+                  <ScrollView
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                    style={styles.reverseScroll}
+                    contentContainerStyle={styles.reverseFaceContent}
+                  >
+                    <View style={styles.cardHeader}>
+                      <View>
+                        <Text style={styles.cardWordmark}>WINGDEX</Text>
+                        <Text style={styles.cardCaption}>LICENSE REVERSE · FIELD NOTES</Text>
+                      </View>
+                      <Feather color="#D8BE87" size={22} />
+                    </View>
+                    <View style={styles.cardRule} />
+                    <Text style={styles.reverseIntro}>A life of looking closer, and the field badges earned along the way.</Text>
+                    <Text style={styles.reverseSectionTitle}>REGIONAL FIELD BADGES</Text>
+                    {achievements.length > 0 ? [...achievements]
+                      .sort((first, second) =>
+                        universalRegionalRankDefinitions.findIndex((rank) => rank.id === first.rank_code)
+                        - universalRegionalRankDefinitions.findIndex((rank) => rank.id === second.rank_code))
+                      .map((achievement) => {
+                        const rankIndex = universalRegionalRankDefinitions.findIndex((rank) => rank.id === achievement.rank_code);
+                        const rank = universalRegionalRankDefinitions[rankIndex];
+                        if (!rank || rankIndex < 0) return null;
+                        return (
+                          <View key={achievement.rank_code} style={styles.reverseBadgeRow}>
+                            <RegionalBadgeMark
+                              variant={rankIndex}
+                              identity={licenseBadgeIdentity}
+                              regionCode={profile.home_region_code}
+                              regionName={profile.home_region_name}
+                              size={37}
+                            />
+                            <View style={styles.reverseBadgeCopy}>
+                              <Text style={styles.reverseBadgeTitle}>{rank.title}</Text>
+                              <Text style={styles.reverseBadgeMeta}>EARNED {new Date(achievement.unlocked_at).toLocaleDateString()}</Text>
+                            </View>
+                          </View>
+                        );
+                      })
+                      : <Text style={styles.reverseBody}>Your regional badges will appear here as you reach their thresholds.</Text>}
+                    <View style={styles.reverseRule} />
+                    <Text style={styles.reverseSectionTitle}>TOP 3 FAVORITE BIRDS</Text>
+                    {favoriteBirds.length > 0 ? favoriteBirds.map((birdName, index) => (
+                      <View key={birdName} style={styles.favoriteBirdRow}>
+                        <Text style={styles.favoriteBirdNumber}>0{index + 1}</Text>
+                        <Text style={styles.favoriteBirdName}>{birdName}</Text>
+                      </View>
+                    )) : (
+                      <Text style={styles.reverseBody}>Choose a favorite in your profile or save birds to your collection to feature them here.</Text>
+                    )}
+                    <Text style={styles.conservation}>PROTECT THE HABITAT. THE BIRDS WILL FOLLOW.</Text>
+                  </ScrollView>
+                </Animated.View>
+              </View>
               <Pressable accessibilityRole="button" onPress={() => setShowReverse(!showReverse)} style={styles.reverseButton}>
                 <Text style={styles.reverseButtonText}>{showReverse ? 'VIEW LICENSE FRONT' : 'FLIP LICENSE TO REVERSE'}</Text>
                 <ArrowUpRight color={colors.inkSoft} size={15} />
@@ -633,8 +672,12 @@ const styles = StyleSheet.create({
   tabLabel: { color: colors.muted, fontSize: 10, fontWeight: '700', textAlign: 'center' },
   tabLabelSelected: { color: colors.ink },
   section: { gap: 12 },
-  licenseCard: { minHeight: 266, padding: 15, backgroundColor: '#1C382B', overflow: 'hidden', borderWidth: 1, borderColor: '#B89D68', position: 'relative' },
-  reverseLicenseCard: { backgroundColor: '#243F31' },
+  licenseCard: { height: 320, backgroundColor: '#1C382B', overflow: 'hidden', borderWidth: 1, borderColor: '#B89D68', position: 'relative' },
+  licenseFace: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backfaceVisibility: 'hidden' },
+  licenseFaceContent: { flex: 1, padding: 15 },
+  reverseFace: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#243F31', backfaceVisibility: 'hidden' },
+  reverseScroll: { flex: 1 },
+  reverseFaceContent: { padding: 15, paddingBottom: 18 },
   cardContourOne: { position: 'absolute', width: 260, height: 260, borderRadius: 130, borderWidth: 1, borderColor: 'rgba(230,215,181,0.10)', right: -85, top: 20 },
   cardContourTwo: { position: 'absolute', width: 205, height: 205, borderRadius: 110, borderWidth: 1, borderColor: 'rgba(230,215,181,0.10)', right: -48, top: 46 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
