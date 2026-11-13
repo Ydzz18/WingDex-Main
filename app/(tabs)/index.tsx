@@ -24,7 +24,6 @@ import {
   Feather,
   MapPin,
   Search,
-  User,
   X,
 } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -328,12 +327,6 @@ export default function ExploreScreen() {
                 accessibilityState={{ expanded: notificationsVisible }}
               >
                 <Bell color={colors.ink} size={22} strokeWidth={2} />
-              </PageHeaderAction>
-              <PageHeaderAction
-                onPress={() => router.push('/user_profile')}
-                accessibilityLabel="Account"
-              >
-                <User color={colors.ink} size={22} strokeWidth={2} />
               </PageHeaderAction>
             </View>
           }

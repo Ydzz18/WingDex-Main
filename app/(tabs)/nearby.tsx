@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import {
-  Bell,
   Bird,
   CheckCircle2,
   Clock3,
@@ -22,7 +21,7 @@ import {
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NearbyMap } from '../../src/components/NearbyMap';
-import { PageHeader, PageHeaderAction } from '../../src/components/PageHeader';
+import { PageHeader } from '../../src/components/PageHeader';
 import type { NearbyMapSighting } from '../../src/components/nearbyMapTypes';
 import {
   getEbirdChecklists,
@@ -191,15 +190,6 @@ export default function NearbyScreen() {
         <PageHeader
           title="Nearby"
           subtitle="A little closer to the wild"
-          accessory={
-            <PageHeaderAction
-              onPress={() => router.push('/notifications')}
-              accessibilityLabel="Open notifications"
-            >
-              <Bell color={colors.ink} size={21} strokeWidth={2} />
-              <View style={styles.notificationDot} />
-            </PageHeaderAction>
-          }
         />
 
         <Pressable
@@ -426,17 +416,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 44,
-  },
-  notificationDot: {
-    position: 'absolute',
-    top: 10,
-    right: 11,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.coral,
-    borderWidth: 1.5,
-    borderColor: colors.white,
   },
   locationPanel: {
     minHeight: 68,
