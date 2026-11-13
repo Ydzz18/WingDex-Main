@@ -29,7 +29,7 @@ import {
 } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { birdImages } from '../../src/data/bird-images';
-import { birds, getDailyFeaturedBird, type Bird } from '../../src/data/birds';
+import { birds, type Bird } from '../../src/data/birds';
 import { initialNotifications } from '../../src/data/notifications';
 import {
   findPhilippineRegion,
@@ -51,12 +51,17 @@ import { colors } from '../../src/theme';
 const exploreRegionStorageKey = 'wingdex.explore-region.v1';
 const checklistPageSize = 24;
 
+function getLocalDayNumber(date = new Date()) {
+  const localDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  return Math.floor(localDay / 86_400_000);
+}
+
 export default function ExploreScreen() {
   const { savedIds, observations, storageError, toggle } = useSavedBirds();
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [regionPickerVisible, setRegionPickerVisible] = useState(false);
   const [announcements, setAnnouncements] = useState<AppAnnouncement[]>([]);
-  const [featured, setFeatured] = useState(() => getDailyFeaturedBird());
+  const [spotlightDay, setSpotlightDay] = useState(getLocalDayNumber);
   const [selectedRegionCode, setSelectedRegionCode] = useState<string | null>(null);
   const [regionSelectionLoaded, setRegionSelectionLoaded] = useState(false);
   const [regionPreferenceError, setRegionPreferenceError] = useState<string | null>(null);
@@ -147,11 +152,11 @@ export default function ExploreScreen() {
     const now = new Date();
     const nextLocalMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const timer = setTimeout(
-      () => setFeatured(getDailyFeaturedBird()),
+      () => setSpotlightDay(getLocalDayNumber()),
       nextLocalMidnight.getTime() - now.getTime(),
     );
     return () => clearTimeout(timer);
-  }, [featured]);
+  }, [spotlightDay]);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -200,6 +205,13 @@ export default function ExploreScreen() {
   };
 
   const activeChecklist = checklist?.regionCode === selectedRegionCode ? checklist : null;
+  const regionalSpotlight = useMemo(() => {
+    const species = activeChecklist?.species ?? [];
+    if (species.length === 0) return null;
+    const regionOffset = (selectedRegionCode ?? '').split('')
+      .reduce((total, character) => total + character.charCodeAt(0), 0);
+    return species[(spotlightDay + regionOffset) % species.length] ?? null;
+  }, [activeChecklist, selectedRegionCode, spotlightDay]);
   const matchingRegionSpecies = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
     return (activeChecklist?.species ?? [])
@@ -236,6 +248,7 @@ export default function ExploreScreen() {
       bird.scientificName.toLocaleLowerCase() === species.sciName.toLocaleLowerCase()
       || bird.name.toLocaleLowerCase() === species.comName.toLocaleLowerCase(),
     );
+  const spotlightGuideBird = regionalSpotlight ? findGuideBird(regionalSpotlight) : undefined;
 
   const renderSpecies = (species: EbirdSpecies, regional = true, entryNumber?: number) => {
     const guideBird = findGuideBird(species);
@@ -511,33 +524,66 @@ export default function ExploreScreen() {
 
         <View style={styles.featureHeading}>
           <View>
-            <Text style={styles.eyebrow}>SPECIES SPOTLIGHT</Text>
-            <Text style={styles.featureHeadingTitle}>Today in the field guide</Text>
+            <Text style={styles.eyebrow}>SPECIES SPOTLIGHT · {selectedRegion?.code ?? 'PHILIPPINES'}</Text>
+            <Text style={styles.featureHeadingTitle}>
+              Today in {selectedRegion?.name ?? 'your region'}
+            </Text>
           </View>
-          <Pressable
-            onPress={() => router.push(`/bird/${featured.id}`)}
-            accessibilityRole="button"
-            accessibilityLabel={`Open ${featured.name}`}
-            hitSlop={8}
-          >
-            <ArrowUpRight color={colors.ink} size={20} />
-          </Pressable>
+          {regionalSpotlight && (
+            <Pressable
+              onPress={() => router.push(`/bird/${regionalSpotlight.speciesCode}`)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${regionalSpotlight.comName}`}
+              hitSlop={8}
+            >
+              <ArrowUpRight color={colors.ink} size={20} />
+            </Pressable>
+          )}
         </View>
-        <Pressable
-          onPress={() => router.push(`/bird/${featured.id}`)}
-          style={styles.featureCard}
-          accessibilityRole="button"
-          accessibilityLabel={`Species spotlight: ${featured.name}, ${featured.scientificName}`}
-        >
-          <Image source={birdImages[featured.id]} style={styles.featureImage} />
-          <View style={styles.featureShade} />
-          <View style={styles.featureMeta}>
-            <Text style={styles.featureEyebrow}>DAILY FIELD NOTE  /  {featured.rarity.toUpperCase()}</Text>
-            <Text style={styles.featureName}>{featured.name}</Text>
-            <Text style={styles.featureScientific}>{featured.scientificName}</Text>
+        {!regionSelectionLoaded || checklistLoading ? (
+          <View style={styles.featureState} accessibilityLiveRegion="polite">
+            <ActivityIndicator color={colors.inkSoft} size="small" />
+            <Text style={styles.featureStateText}>Finding today’s bird in the regional checklist…</Text>
           </View>
-        </Pressable>
-        <Text style={styles.photoCredit}>Photo: {featured.imageCredit} · {featured.imageLicense}</Text>
+        ) : checklistError ? (
+          <View style={styles.featureState} accessibilityLiveRegion="polite">
+            <Text style={styles.featureStateTitle}>Regional spotlight unavailable</Text>
+            <Text style={styles.featureStateText}>Load the selected region’s checklist to see its featured species.</Text>
+          </View>
+        ) : regionalSpotlight ? (
+          <>
+            <Pressable
+              onPress={() => router.push(`/bird/${regionalSpotlight.speciesCode}`)}
+              style={styles.featureCard}
+              accessibilityRole="button"
+              accessibilityLabel={`Regional species spotlight: ${regionalSpotlight.comName}, ${regionalSpotlight.sciName}, ${selectedRegion?.name ?? 'Philippines'}`}
+            >
+              {spotlightGuideBird && birdImages[spotlightGuideBird.id] ? (
+                <Image source={birdImages[spotlightGuideBird.id]} style={styles.featureImage} />
+              ) : (
+                <View style={styles.featureImageFallback}>
+                  <Feather color={colors.leaf} size={48} strokeWidth={1.4} />
+                </View>
+              )}
+              <View style={styles.featureShade} />
+              <View style={styles.featureMeta}>
+                <Text style={styles.featureEyebrow}>REGIONAL FIELD NOTE  /  {selectedRegion?.code ?? 'PHILIPPINES'}</Text>
+                <Text style={styles.featureName}>{regionalSpotlight.comName}</Text>
+                <Text style={styles.featureScientific}>{regionalSpotlight.sciName}</Text>
+              </View>
+            </Pressable>
+            {spotlightGuideBird && (
+              <Text style={styles.photoCredit}>
+                Photo: {spotlightGuideBird.imageCredit} · {spotlightGuideBird.imageLicense}
+              </Text>
+            )}
+          </>
+        ) : (
+          <View style={styles.featureState}>
+            <Text style={styles.featureStateTitle}>No regional spotlight yet</Text>
+            <Text style={styles.featureStateText}>A featured bird will appear when this region has a published checklist.</Text>
+          </View>
+        )}
       </ScrollView>
 
       <Modal
@@ -801,12 +847,16 @@ const styles = StyleSheet.create({
   featureHeadingTitle: { color: colors.ink, fontFamily: 'Georgia', fontSize: 18, fontWeight: '700', marginTop: 3 },
   featureCard: { height: 222, overflow: 'hidden', backgroundColor: colors.ink, borderRadius: 20 },
   featureImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  featureImageFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink },
   featureShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(25, 47, 39, 0.38)' },
   featureMeta: { position: 'absolute', left: 18, right: 18, bottom: 17 },
   featureEyebrow: { color: colors.yellow, fontSize: 9, fontWeight: '800', letterSpacing: 1.1 },
   featureName: { color: colors.white, fontFamily: 'Georgia', fontSize: 23, lineHeight: 28, marginTop: 5 },
   featureScientific: { color: '#FFFFFFD9', fontSize: 12, fontStyle: 'italic', marginTop: 3 },
   photoCredit: { color: colors.muted, fontSize: 8, lineHeight: 12, marginTop: 5 },
+  featureState: { minHeight: 88, justifyContent: 'center', gap: 7, padding: 16, backgroundColor: '#F1F3ED', borderRadius: 15, borderWidth: 1, borderColor: colors.line },
+  featureStateTitle: { color: colors.ink, fontFamily: 'Georgia', fontSize: 15, fontWeight: '700' },
+  featureStateText: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   modalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(16, 35, 28, 0.48)' },
   regionDialog: { flexShrink: 1, padding: 17, borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper, shadowColor: colors.ink, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 20, elevation: 10 },
