@@ -381,7 +381,7 @@ export default function CollectionScreen() {
                   : 'Your identified sightings and field notes will gather here.'}
             </Text>
             <Pressable
-              onPress={() => router.push('/birds')}
+              onPress={() => router.push(filter === 'Favorites' ? '/birds' : '/nearby')}
               style={({ pressed }) => [styles.browseButton, pressed && styles.buttonPressed]}
               accessibilityRole="button"
             >
