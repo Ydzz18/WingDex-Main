@@ -257,7 +257,8 @@ export default function UserProfileScreen() {
     setPhotoSaving(true);
     setError(null);
     try {
-      const nextUrl = await uploadProfilePhoto(result.assets[0].uri);
+      const asset = result.assets[0];
+      const nextUrl = await uploadProfilePhoto(asset.uri, asset.mimeType, asset.fileName);
       setAvatarUrl(nextUrl);
       await loadProfile();
     } catch (photoError) {

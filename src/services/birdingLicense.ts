@@ -155,7 +155,47 @@ export async function saveBirdingLicenseProfile(input: {
   return data as { license_number: string };
 }
 
-export async function uploadProfilePhoto(uri: string): Promise<string> {
+type ProfilePhotoMimeType = 'image/jpeg' | 'image/png' | 'image/webp';
+
+const profilePhotoExtensions: Record<ProfilePhotoMimeType, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+function normalizeProfilePhotoMimeType(mimeType: string | null | undefined): ProfilePhotoMimeType | null {
+  const normalized = mimeType?.split(';')[0]?.trim().toLowerCase();
+  if (normalized === 'image/jpg') return 'image/jpeg';
+  return normalized === 'image/jpeg' || normalized === 'image/png' || normalized === 'image/webp'
+    ? normalized
+    : null;
+}
+
+function profilePhotoMimeType(
+  candidates: (string | null | undefined)[],
+  fileName: string | null | undefined,
+  uri: string,
+): ProfilePhotoMimeType {
+  for (const candidate of candidates) {
+    const mimeType = normalizeProfilePhotoMimeType(candidate);
+    if (mimeType) return mimeType;
+  }
+
+  const sourceNames = [fileName, uri.split(/[?#]/, 1)[0]];
+  for (const sourceName of sourceNames) {
+    const extension = sourceName?.split('.').pop()?.toLowerCase();
+    if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+    if (extension === 'png') return 'image/png';
+    if (extension === 'webp') return 'image/webp';
+  }
+  throw new Error('Choose a JPEG, PNG, or WebP image for your profile photo.');
+}
+
+export async function uploadProfilePhoto(
+  uri: string,
+  mimeType?: string | null,
+  fileName?: string | null,
+): Promise<string> {
   if (!supabase) throw new Error('Wingdex account sync is unavailable.');
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw sessionError;
@@ -163,10 +203,11 @@ export async function uploadProfilePhoto(uri: string): Promise<string> {
   if (!userId) throw new Error('Sign in again before adding a profile photo.');
   const response = await fetch(uri);
   const photo = await response.blob();
-  const path = `${userId}/${Date.now()}.jpg`;
+  const contentType = profilePhotoMimeType([mimeType, photo.type], fileName, uri);
+  const path = `${userId}/${Date.now()}.${profilePhotoExtensions[contentType]}`;
   const { error: uploadError } = await supabase.storage
     .from('profile-photos')
-    .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: false });
+    .upload(path, photo, { contentType, upsert: false });
   if (uploadError) throw uploadError;
   const { error: updateError } = await supabase.from('profiles')
     .update({ avatar_path: path })
