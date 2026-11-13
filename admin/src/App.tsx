@@ -13,6 +13,7 @@ import {
   CircleAlert,
   Feather,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   Menu,
   Megaphone,
@@ -25,7 +26,7 @@ import {
 } from 'lucide-react';
 import { philippineRegions } from '../../src/data/philippineRegions';
 
-type Section = 'overview' | 'users' | 'collections' | 'badges' | 'ranks' | 'regional-ranks' | 'announcements';
+type Section = 'overview' | 'users' | 'collections' | 'badges' | 'ranks' | 'regional-ranks' | 'checklists' | 'announcements';
 type DataRow = Record<string, unknown>;
 type PageResult = { rows: DataRow[]; total: number };
 type Overview = {
@@ -66,7 +67,8 @@ const sectionMeta: Record<Section, { title: string; subtitle: string; icon: type
   collections: { title: 'Field records', subtitle: 'Saved species and observations across the community.', icon: BookOpen },
   badges: { title: 'Badges', subtitle: 'Shape the small rewards that mark a birder’s progress.', icon: Award },
   ranks: { title: 'Legacy ranks', subtitle: 'Existing global milestone records are preserved for compatibility; regional ranks use the universal ladder.', icon: Feather },
-  'regional-ranks': { title: 'Checklist publishing', subtitle: 'Refresh, review, and publish versioned eBird species lists across Philippine regions.', icon: Sparkles },
+  'regional-ranks': { title: 'Regional ranks', subtitle: 'Review the fixed six-rank ladder shared across Philippine regional checklists.', icon: Sparkles },
+  checklists: { title: 'Checklists', subtitle: 'Refresh, review, and publish versioned eBird species lists across Philippine regions.', icon: ListChecks },
   announcements: { title: 'Announcements', subtitle: 'Write once, then publish to every Wingdex birder.', icon: Megaphone },
 };
 
@@ -255,14 +257,11 @@ export default function App() {
         const result = await adminRequest<Overview>('/admin/overview', token);
         if (requestId === requestGeneration.current) setOverview(result);
       } else if (activeSection === 'regional-ranks') {
-        const [definitions, snapshots] = await Promise.all([
-          adminRequest<DataRow[]>('/admin/regional-rank-definitions', token),
-          adminRequest<DataRow[]>('/admin/regional-rank-checklists', token),
-        ]);
-        if (requestId === requestGeneration.current) {
-          setRegionalRankDefinitions(definitions);
-          setPageData({ rows: snapshots, total: snapshots.length });
-        }
+        const definitions = await adminRequest<DataRow[]>('/admin/regional-rank-definitions', token);
+        if (requestId === requestGeneration.current) setRegionalRankDefinitions(definitions);
+      } else if (activeSection === 'checklists') {
+        const snapshots = await adminRequest<DataRow[]>('/admin/regional-rank-checklists', token);
+        if (requestId === requestGeneration.current) setPageData({ rows: snapshots, total: snapshots.length });
       } else {
         const query = new URLSearchParams({
           page: String(page),
@@ -472,7 +471,7 @@ export default function App() {
                 aria-current={activeSection === section ? 'page' : undefined}
               >
                 <MetaIcon size={18} strokeWidth={1.8} />
-                <span>{section === 'overview' ? 'Overview' : section === 'regional-ranks' ? 'Checklist publishing' : section === 'ranks' ? 'Legacy ranks' : section[0].toUpperCase() + section.slice(1)}</span>
+                <span>{section === 'overview' ? 'Overview' : section === 'regional-ranks' ? 'Regional ranks' : section === 'ranks' ? 'Legacy ranks' : section[0].toUpperCase() + section.slice(1)}</span>
                 {section === 'announcements' && (overview?.publishedAnnouncements ?? 0) > 0 && (
                   <span className="nav-count">{overview?.publishedAnnouncements}</span>
                 )}
@@ -523,6 +522,12 @@ export default function App() {
           {activeSection === 'regional-ranks' && (
             <RegionalRanksSection
               definitions={regionalRankDefinitions}
+              loading={loading}
+            />
+          )}
+
+          {activeSection === 'checklists' && (
+            <ChecklistsSection
               snapshots={pageData.rows}
               loading={loading}
               refreshingRegion={refreshingRegion}
@@ -531,7 +536,7 @@ export default function App() {
             />
           )}
 
-          {activeSection !== 'overview' && activeSection !== 'regional-ranks' && (
+          {activeSection !== 'overview' && activeSection !== 'regional-ranks' && activeSection !== 'checklists' && (
             <section className="data-panel">
               <div className="panel-toolbar">
                 <div><strong>{pageData.total.toLocaleString()}</strong><span> records</span></div>
@@ -568,7 +573,7 @@ export default function App() {
             </section>
           )}
 
-          <footer className="page-footer"><span>Wingdex field operations</span><span>{activeSection === 'regional-ranks' ? 'Checklist publishing is controlled and versioned.' : 'People and collections are view-only.'}</span></footer>
+          <footer className="page-footer"><span>Wingdex field operations</span><span>{activeSection === 'checklists' ? 'Checklist publishing is controlled and versioned.' : activeSection === 'regional-ranks' ? 'The six-rank ladder is shared across all regions.' : 'People and collections are view-only.'}</span></footer>
         </div>
       </main>
 
@@ -750,18 +755,10 @@ function OverviewSection({ data, onNavigate }: { data: Overview | null; onNaviga
 
 function RegionalRanksSection({
   definitions,
-  snapshots,
   loading,
-  refreshingRegion,
-  onRefresh,
-  onPublish,
 }: {
   definitions: DataRow[];
-  snapshots: DataRow[];
   loading: boolean;
-  refreshingRegion: string | null;
-  onRefresh: (regionCode: string) => void;
-  onPublish: (row: DataRow) => void;
 }) {
   return (
     <div className="regional-ranks-workspace">
@@ -789,7 +786,25 @@ function RegionalRanksSection({
         )}
         <p className="field-hint">Hatchling unlocks at exactly one verified species. Remaining gates use ceiling-rounded checklist percentages; rank definitions are intentionally not editable per region.</p>
       </section>
+    </div>
+  );
+}
 
+function ChecklistsSection({
+  snapshots,
+  loading,
+  refreshingRegion,
+  onRefresh,
+  onPublish,
+}: {
+  snapshots: DataRow[];
+  loading: boolean;
+  refreshingRegion: string | null;
+  onRefresh: (regionCode: string) => void;
+  onPublish: (row: DataRow) => void;
+}) {
+  return (
+    <div className="regional-checklists-workspace">
       <section className="regional-snapshot-panel">
         <div className="section-panel-heading">
           <div><div className="eyebrow">VERSIONED EBIRD SOURCES</div><h2>Regional checklist snapshots</h2></div>

@@ -443,7 +443,7 @@ tbody tr:hover { background: #fafbf7; }
   .page-footer { font-size: 12px; }
 }
 
-.regional-ranks-workspace { display: grid; gap: 18px; }
+.regional-ranks-workspace, .regional-checklists-workspace { display: grid; gap: 18px; }
 .regional-ladder-panel, .regional-snapshot-panel {
   padding: 21px;
   border: 1px solid var(--line);
