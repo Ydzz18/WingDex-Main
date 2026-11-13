@@ -66,7 +66,7 @@ const sectionMeta: Record<Section, { title: string; subtitle: string; icon: type
   collections: { title: 'Field records', subtitle: 'Saved species and observations across the community.', icon: BookOpen },
   badges: { title: 'Badges', subtitle: 'Shape the small rewards that mark a birder’s progress.', icon: Award },
   ranks: { title: 'Legacy ranks', subtitle: 'Existing global milestone records are preserved for compatibility; regional ranks use the universal ladder.', icon: Feather },
-  'regional-ranks': { title: 'Regional ranks', subtitle: 'Review the fixed six-rank ladder and versioned eBird snapshots for each Philippine region.', icon: Sparkles },
+  'regional-ranks': { title: 'Checklist publishing', subtitle: 'Refresh, review, and publish versioned eBird species lists across Philippine regions.', icon: Sparkles },
   announcements: { title: 'Announcements', subtitle: 'Write once, then publish to every Wingdex birder.', icon: Megaphone },
 };
 
@@ -472,7 +472,7 @@ export default function App() {
                 aria-current={activeSection === section ? 'page' : undefined}
               >
                 <MetaIcon size={18} strokeWidth={1.8} />
-                <span>{section === 'overview' ? 'Overview' : section === 'regional-ranks' ? 'Regional ranks' : section === 'ranks' ? 'Legacy ranks' : section[0].toUpperCase() + section.slice(1)}</span>
+                <span>{section === 'overview' ? 'Overview' : section === 'regional-ranks' ? 'Checklist publishing' : section === 'ranks' ? 'Legacy ranks' : section[0].toUpperCase() + section.slice(1)}</span>
                 {section === 'announcements' && (overview?.publishedAnnouncements ?? 0) > 0 && (
                   <span className="nav-count">{overview?.publishedAnnouncements}</span>
                 )}
@@ -542,7 +542,13 @@ export default function App() {
                   <button type="submit" className="search-submit">Search</button>
                 </form>
               </div>
-              {loading ? <TableLoading /> : pageData.rows.length === 0 ? <EmptyState section={activeSection} searching={Boolean(search)} /> : (
+              {loading ? <TableLoading /> : pageData.rows.length === 0 ? (
+                <EmptyState
+                  section={activeSection}
+                  searching={Boolean(search)}
+                  onNavigate={chooseSection}
+                />
+              ) : (
                 <DataTable
                   section={activeSection}
                   rows={pageData.rows}
@@ -1018,12 +1024,40 @@ function TableLoading() {
   return <div className="table-loading" role="status"><span className="spinner" />Gathering field notes…</div>;
 }
 
-function EmptyState({ section, searching }: { section: Section; searching: boolean }) {
+function EmptyState({
+  section,
+  searching,
+  onNavigate,
+}: {
+  section: Section;
+  searching: boolean;
+  onNavigate: (section: Section) => void;
+}) {
+  const isLegacyRanks = section === 'ranks' && !searching;
   return (
     <div className="empty-state">
       <div className="empty-icon">{searching ? <Search size={21} /> : <Feather size={21} />}</div>
-      <strong>{searching ? 'No matching records' : `No ${section === 'users' ? 'members' : section === 'collections' ? 'field records' : section} yet`}</strong>
-      <span>{searching ? 'Try another name, email or species.' : section === 'badges' || section === 'ranks' || section === 'announcements' ? 'Create a first entry to give the app something new to share.' : 'Records will appear here as the Wingdex community grows.'}</span>
+      <strong>
+        {searching
+          ? 'No matching records'
+          : isLegacyRanks
+            ? 'No legacy global ranks'
+            : `No ${section === 'users' ? 'members' : section === 'collections' ? 'field records' : section} yet`}
+      </strong>
+      <span>
+        {searching
+          ? 'Try another name, email or species.'
+          : isLegacyRanks
+            ? 'The active six-rank regional ladder is managed separately.'
+            : section === 'badges' || section === 'ranks' || section === 'announcements'
+              ? 'Create a first entry to give the app something new to share.'
+              : 'Records will appear here as the Wingdex community grows.'}
+      </span>
+      {isLegacyRanks && (
+        <button className="text-button" onClick={() => onNavigate('regional-ranks')}>
+          View active regional ranks <ChevronRight size={15} />
+        </button>
+      )}
     </div>
   );
 }
