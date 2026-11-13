@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -26,13 +27,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BirdRow } from '../../src/components/BirdRow';
 import { PageHeader, PageHeaderAction } from '../../src/components/PageHeader';
 import { birds } from '../../src/data/birds';
-import { birdRegions, type BirdRegion } from '../../src/data/regions';
+import { philippineRegions, type PhilippineRegionCode } from '../../src/data/philippineRegions';
 import { worldBirds } from '../../src/data/world-birds';
 import { useSavedBirds } from '../../src/hooks/useSavedBirds';
 import type { BirdObservation } from '../../src/services/collection';
+import { getPhilippineRegionalChecklist, type EbirdRegionalChecklist } from '../../src/services/ebird';
 import { colors } from '../../src/theme';
 
 type CollectionFilter = 'All birds' | 'Favorites';
+type CollectionRegion = 'All' | PhilippineRegionCode;
+
+const collectionRegionLabels: Record<PhilippineRegionCode, string> = {
+  NCR: 'NCR',
+  CAR: 'CAR',
+  REGION_I: 'Ilocos',
+  REGION_II: 'Cagayan Valley',
+  REGION_III: 'Central Luzon',
+  REGION_IV_A: 'CALABARZON',
+  REGION_IV_B: 'MIMAROPA',
+  REGION_V: 'Bicol',
+  REGION_VI: 'Western Visayas',
+  REGION_VII: 'Central Visayas',
+  REGION_VIII: 'Eastern Visayas',
+  REGION_IX: 'Zamboanga',
+  REGION_X: 'Northern Mindanao',
+  REGION_XI: 'Davao',
+  REGION_XII: 'SOCCSKSARGEN',
+  REGION_XIII: 'Caraga',
+  BARMM: 'BARMM',
+  NIR: 'Negros Island',
+};
 
 const knownSpecies = new Map<string, string>();
 for (const bird of [...birds, ...worldBirds]) {
@@ -50,6 +74,10 @@ function speciesKey(observation: BirdObservation) {
 function observationTime(observation: BirdObservation) {
   const timestamp = new Date(observation.identifiedAt).getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function normalizedSpeciesName(name: string | null | undefined) {
+  return name?.trim().toLocaleLowerCase() ?? '';
 }
 
 function formatObservationDate(identifiedAt: string) {
@@ -116,10 +144,74 @@ function ObservationCard({
 
 export default function CollectionScreen() {
   const [filter, setFilter] = useState<CollectionFilter>('All birds');
-  const [region, setRegion] = useState<'All' | BirdRegion>('All');
+  const [region, setRegion] = useState<CollectionRegion>('All');
+  const [regionalChecklist, setRegionalChecklist] = useState<EbirdRegionalChecklist | null>(null);
+  const [regionalChecklistLoading, setRegionalChecklistLoading] = useState(false);
+  const [regionalChecklistError, setRegionalChecklistError] = useState<string | null>(null);
+  const [regionalChecklistAttempt, setRegionalChecklistAttempt] = useState(0);
   const [query, setQuery] = useState('');
   const [newestFirst, setNewestFirst] = useState(true);
   const { observations, savedIds, storageError, syncError, syncing, retrySync, toggle } = useSavedBirds();
+
+  useEffect(() => {
+    if (region === 'All') return undefined;
+    let active = true;
+    getPhilippineRegionalChecklist(region)
+      .then((checklist) => {
+        if (
+          checklist.regionCode !== region
+          || !Array.isArray(checklist.speciesCodes)
+          || !Array.isArray(checklist.species)
+          || checklist.speciesCodes.length !== checklist.species.length
+        ) {
+          throw new Error('The regional bird checklist could not be verified. Please try again.');
+        }
+        if (active) setRegionalChecklist(checklist);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setRegionalChecklistError(cause instanceof Error
+            ? cause.message
+            : 'Could not load this regional bird checklist. Please try again.');
+        }
+      })
+      .finally(() => {
+        if (active) setRegionalChecklistLoading(false);
+      });
+    return () => { active = false; };
+  }, [region, regionalChecklistAttempt]);
+
+  const regionalSpeciesKeys = useMemo(() => {
+    const keys = new Set<string>();
+    regionalChecklist?.species.forEach((species) => {
+      const code = normalizedSpeciesName(species.speciesCode);
+      const commonName = normalizedSpeciesName(species.comName);
+      const scientificName = normalizedSpeciesName(species.sciName);
+      if (code) keys.add(code);
+      if (commonName) keys.add(commonName);
+      if (scientificName) keys.add(scientificName);
+    });
+    return keys;
+  }, [regionalChecklist]);
+
+  const chooseRegion = (nextRegion: CollectionRegion) => {
+    setRegion(nextRegion);
+    setRegionalChecklist(null);
+    setRegionalChecklistError(null);
+    if (nextRegion === 'All') {
+      setRegionalChecklistLoading(false);
+      return;
+    }
+    setRegionalChecklistLoading(true);
+    if (nextRegion === region) setRegionalChecklistAttempt((attempt) => attempt + 1);
+  };
+
+  const retryRegionalChecklist = () => {
+    setRegionalChecklist(null);
+    setRegionalChecklistError(null);
+    setRegionalChecklistLoading(true);
+    setRegionalChecklistAttempt((attempt) => attempt + 1);
+  };
 
   const latestObservationTime = useMemo(
     () => Math.max(0, ...observations.map(observationTime)),
@@ -163,7 +255,11 @@ export default function CollectionScreen() {
           bird.name.toLocaleLowerCase() === observation.commonName?.toLocaleLowerCase()
         );
       }))
-      .filter((observation) => region === 'All' || observation.regions.includes(region))
+      .filter((observation) => region === 'All' || (
+        regionalSpeciesKeys.has(normalizedSpeciesName(observation.ebirdSpecies?.speciesCode))
+        || regionalSpeciesKeys.has(normalizedSpeciesName(observation.scientificName))
+        || regionalSpeciesKeys.has(normalizedSpeciesName(observation.commonName))
+      ))
       .filter((observation) => !normalizedQuery || [
         observation.commonName ?? 'unidentified bird',
         observation.scientificName ?? '',
@@ -172,17 +268,20 @@ export default function CollectionScreen() {
       .sort((left, right) => newestFirst
         ? observationTime(right) - observationTime(left)
         : observationTime(left) - observationTime(right));
-  }, [filter, newestFirst, observations, query, region, savedIds]);
+  }, [filter, newestFirst, observations, query, region, regionalSpeciesKeys, savedIds]);
 
   const favoriteBirds = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     return birds.filter((bird) =>
       savedIds.includes(bird.id) &&
-      (region === 'All' || bird.regions.includes(region)) &&
+      (region === 'All' || (
+        regionalSpeciesKeys.has(normalizedSpeciesName(bird.name))
+        || regionalSpeciesKeys.has(normalizedSpeciesName(bird.scientificName))
+      )) &&
       (!normalizedQuery || `${bird.name} ${bird.scientificName} ${bird.regions.join(' ')}`
         .toLocaleLowerCase().includes(normalizedQuery))
     );
-  }, [query, region, savedIds]);
+  }, [query, region, regionalSpeciesKeys, savedIds]);
 
   const recentDiscoveries = observations.filter((observation) =>
     latestObservationTime > 0 &&
@@ -191,6 +290,7 @@ export default function CollectionScreen() {
   ).length;
   const favoriteCount = savedIds.length;
   const noResults = filter === 'Favorites' ? favoriteBirds.length === 0 : filteredObservations.length === 0;
+  const regionChecklistUnavailable = region !== 'All' && (regionalChecklistLoading || regionalChecklistError !== null);
   const dateContext = latestObservationTime
     ? new Date(latestObservationTime).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     : 'Awaiting first note';
@@ -327,17 +427,26 @@ export default function CollectionScreen() {
             );
           })}
           <View style={styles.filterDivider} />
-          {(['All', ...birdRegions] as const).map((item) => {
-            const selected = region === item;
+          <Pressable
+            onPress={() => chooseRegion('All')}
+            style={[styles.regionChip, region === 'All' && styles.regionChipSelected]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: region === 'All' }}
+          >
+            <Text style={[styles.regionText, region === 'All' && styles.regionTextSelected]}>All regions</Text>
+          </Pressable>
+          {philippineRegions.map((item) => {
+            const selected = region === item.code;
             return (
               <Pressable
-                key={item}
-                onPress={() => setRegion(item)}
+                key={item.code}
+                onPress={() => chooseRegion(item.code)}
                 style={[styles.regionChip, selected && styles.regionChipSelected]}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
+                accessibilityLabel={`Filter by ${item.name}`}
               >
-                <Text style={[styles.regionText, selected && styles.regionTextSelected]}>{item}</Text>
+                <Text style={[styles.regionText, selected && styles.regionTextSelected]}>{collectionRegionLabels[item.code]}</Text>
               </Pressable>
             );
           })}
@@ -361,7 +470,31 @@ export default function CollectionScreen() {
           )}
         </View>
 
-        {noResults ? (
+        {regionChecklistUnavailable ? (
+          <View style={styles.regionalStatus}>
+            {regionalChecklistLoading ? (
+              <>
+                <ActivityIndicator color={colors.inkSoft} />
+                <Text style={styles.regionalStatusText}>
+                  Loading {philippineRegions.find((item) => item.code === region)?.name ?? 'regional'} checklist…
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text accessibilityRole="alert" style={styles.regionalStatusText}>
+                  {regionalChecklistError}
+                </Text>
+                <Pressable
+                  onPress={retryRegionalChecklist}
+                  style={({ pressed }) => [styles.regionalRetry, pressed && styles.buttonPressed]}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.regionalRetryText}>Try again</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        ) : noResults ? (
           <View style={styles.empty}>
             <View style={styles.emptyIcon}><Feather color={colors.inkSoft} size={25} /></View>
             <Text style={styles.emptyTitle}>
@@ -436,7 +569,7 @@ export default function CollectionScreen() {
           <ChevronRight color={colors.inkSoft} size={18} />
         </Pressable>
 
-        <Text style={styles.localNote}>Saved on this device · Ranges are not sighting locations</Text>
+        <Text style={styles.localNote}>Saved on this device · Regional filters match eBird checklists, not sighting locations</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -491,6 +624,10 @@ const styles = StyleSheet.create({
   sortText: { color: colors.inkSoft, fontSize: 10, fontWeight: '700' },
   chevronReversed: { transform: [{ rotate: '180deg' }] },
   list: { marginTop: 2 },
+  regionalStatus: { minHeight: 92, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 18, marginTop: 2, borderRadius: 18, backgroundColor: colors.white },
+  regionalStatusText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  regionalRetry: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 13, borderRadius: 18, backgroundColor: colors.ink },
+  regionalRetryText: { color: colors.white, fontSize: 11, fontWeight: '700' },
   observationCard: { minHeight: 96, flexDirection: 'row', alignItems: 'center', padding: 10, marginBottom: 10, borderRadius: 17, backgroundColor: colors.white },
   rowPressed: { opacity: 0.8 },
   observationImage: { width: 72, height: 72, borderRadius: 11, backgroundColor: colors.leaf },
