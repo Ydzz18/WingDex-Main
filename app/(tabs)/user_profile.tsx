@@ -27,6 +27,8 @@ import {
 } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { birds } from '../../src/data/birds';
+import { worldBirds } from '../../src/data/world-birds';
 import {
   getBirdingLicenseProfile,
   getProfilePhotoUrl,
@@ -55,6 +57,7 @@ const tabItems: { id: ProfileTab; label: string; icon: typeof BadgeCheck }[] = [
   { id: 'discoveries', label: 'Discoveries', icon: BookOpenText },
   { id: 'settings', label: 'Settings', icon: Feather },
 ];
+const birdNamesById = new Map([...birds, ...worldBirds].map((bird) => [bird.id, bird.name]));
 
 export default function UserProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -98,6 +101,12 @@ export default function UserProfileScreen() {
       || (computedRank?.regionCode === profile?.home_region_code && computedRank?.rankCode === rank.id),
   ) ?? universalRegionalRankDefinitions[0], [achievements, computedRank, profile?.home_region_code]);
   const currentRankIndex = universalRegionalRankDefinitions.findIndex((rank) => rank.id === currentRank.id);
+  const favoriteBirds = useMemo(() => {
+    const names = [profile?.favorite_bird, ...savedIds.map((id) => birdNamesById.get(id))]
+      .filter((name): name is string => Boolean(name?.trim()))
+      .map((name) => name.trim());
+    return [...new Set(names)].slice(0, 3);
+  }, [profile?.favorite_bird, savedIds]);
 
   const loadProfile = useCallback(async () => {
     setError(null);
@@ -319,110 +328,124 @@ export default function UserProfileScreen() {
 
           {activeTab === 'license' && (
             <View style={styles.section}>
-              <View style={styles.licenseCard}>
-                <View style={styles.cardContourOne} />
-                <View style={styles.cardContourTwo} />
-                <View style={styles.cardHeader}>
-                  <View>
-                    <Text style={styles.cardWordmark}>WINGDEX</Text>
-                    <Text style={styles.cardCaption}>BIRD WATCHER LICENSE</Text>
-                  </View>
-                  <View style={styles.issueStamp}>
-                    <Text style={styles.stampText}>FIELD</Text>
-                    <Text style={styles.stampText}>ISSUED</Text>
-                  </View>
-                </View>
-                <View style={styles.cardRule} />
-                <View style={styles.cardIdentity}>
-                  <View style={styles.cardAvatarWrap}>
-                    {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.cardAvatar} /> : <View style={styles.cardAvatarFallback}><Feather color="#E6D7B5" size={27} /></View>}
-                  </View>
-                  <View style={styles.identityCopy}>
-                    <Text style={styles.cardName} numberOfLines={1}>{profile.display_name}</Text>
-                    <Text style={styles.cardHandle} numberOfLines={1}>@{profile.username}</Text>
-                    <View style={styles.rankLine}><Trophy color="#D8BE87" size={13} /><Text style={styles.cardRank}>{currentRank.title}</Text></View>
-                  </View>
-                </View>
-                <View style={styles.cardBottom}>
-                  <View style={styles.cardMeta}>
-                    <Text style={styles.metaKicker}>LICENSE NUMBER</Text>
-                    <Text style={styles.licenseNumber}>{profile.license_number}</Text>
-                    <View style={styles.regionLine}>
-                      <RegionalBadgeMark
-                        variant={Math.max(0, currentRankIndex)}
-                        identity={licenseBadgeIdentity}
-                        regionCode={profile.home_region_code}
-                        regionName={profile.home_region_name}
-                        size={38}
-                      />
-                      <View style={styles.regionCopy}>
-                        <Text style={styles.regionName}>{profile.home_region_name}</Text>
-                        <Text style={styles.regionBadgeName} numberOfLines={1}>{regionIdentity?.title}</Text>
-                        <Text style={styles.speciesMeta}>{speciesCount} recorded species</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showReverse ? 'Show front of birding license' : 'Show back of birding license'}
+                onPress={() => setShowReverse((current) => !current)}
+                style={[styles.licenseCard, showReverse && styles.reverseLicenseCard]}
+              >
+                {showReverse ? (
+                  <>
+                    <View style={styles.cardHeader}>
+                      <View>
+                        <Text style={styles.cardWordmark}>WINGDEX</Text>
+                        <Text style={styles.cardCaption}>LICENSE REVERSE · FIELD NOTES</Text>
+                      </View>
+                      <Feather color="#D8BE87" size={22} />
+                    </View>
+                    <View style={styles.cardRule} />
+                    <Text style={styles.reverseIntro}>A life of looking closer, and the field badges earned along the way.</Text>
+                    <Text style={styles.reverseSectionTitle}>REGIONAL FIELD BADGES</Text>
+                    {achievements.length > 0 ? [...achievements]
+                      .sort((first, second) =>
+                        universalRegionalRankDefinitions.findIndex((rank) => rank.id === first.rank_code)
+                        - universalRegionalRankDefinitions.findIndex((rank) => rank.id === second.rank_code))
+                      .map((achievement) => {
+                        const rankIndex = universalRegionalRankDefinitions.findIndex((rank) => rank.id === achievement.rank_code);
+                        const rank = universalRegionalRankDefinitions[rankIndex];
+                        if (!rank || rankIndex < 0) return null;
+                        return (
+                          <View key={achievement.rank_code} style={styles.reverseBadgeRow}>
+                            <RegionalBadgeMark
+                              variant={rankIndex}
+                              identity={licenseBadgeIdentity}
+                              regionCode={profile.home_region_code}
+                              regionName={profile.home_region_name}
+                              size={37}
+                            />
+                            <View style={styles.reverseBadgeCopy}>
+                              <Text style={styles.reverseBadgeTitle}>{rank.title}</Text>
+                              <Text style={styles.reverseBadgeMeta}>EARNED {new Date(achievement.unlocked_at).toLocaleDateString()}</Text>
+                            </View>
+                          </View>
+                        );
+                      })
+                      : <Text style={styles.reverseBody}>Your regional badges will appear here as you reach their thresholds.</Text>}
+                    <View style={styles.reverseRule} />
+                    <Text style={styles.reverseSectionTitle}>TOP 3 FAVORITE BIRDS</Text>
+                    {favoriteBirds.length > 0 ? favoriteBirds.map((birdName, index) => (
+                      <View key={birdName} style={styles.favoriteBirdRow}>
+                        <Text style={styles.favoriteBirdNumber}>0{index + 1}</Text>
+                        <Text style={styles.favoriteBirdName}>{birdName}</Text>
+                      </View>
+                    )) : (
+                      <Text style={styles.reverseBody}>Choose a favorite in your profile or save birds to your collection to feature them here.</Text>
+                    )}
+                    <Text style={styles.conservation}>PROTECT THE HABITAT. THE BIRDS WILL FOLLOW.</Text>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.cardContourOne} />
+                    <View style={styles.cardContourTwo} />
+                    <View style={styles.cardHeader}>
+                      <View>
+                        <Text style={styles.cardWordmark}>WINGDEX</Text>
+                        <Text style={styles.cardCaption}>BIRD WATCHER LICENSE</Text>
+                      </View>
+                      <View style={styles.issueStamp}>
+                        <Text style={styles.stampText}>FIELD</Text>
+                        <Text style={styles.stampText}>ISSUED</Text>
                       </View>
                     </View>
-                    {profile.favorite_bird ? <Text style={styles.favoriteText} numberOfLines={1}>FAVORITE · {profile.favorite_bird}</Text> : null}
-                  </View>
-                  <View style={styles.qrCell}>
-                    {publicUrl ? (
-                      <QRCode value={publicUrl} size={80} backgroundColor="#FFFDF5" color="#183025" quietZone={3} />
-                    ) : (
-                      <View style={styles.privateQr}>
-                        <QrCode color="#748078" size={28} />
+                    <View style={styles.cardRule} />
+                    <View style={styles.cardIdentity}>
+                      <View style={styles.cardAvatarWrap}>
+                        {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.cardAvatar} /> : <View style={styles.cardAvatarFallback}><Feather color="#E6D7B5" size={27} /></View>}
                       </View>
-                    )}
-                    <Text style={styles.qrCaption}>{publicUrl ? 'SCAN LICENSE' : 'SET PUBLIC URL'}</Text>
-                  </View>
-                </View>
-              </View>
-              <Pressable accessibilityRole="button" onPress={() => setShowReverse(!showReverse)} style={styles.reverseButton}>
-                <Text style={styles.reverseButtonText}>{showReverse ? 'VIEW LICENSE FACE' : 'VIEW LICENSE DETAILS'}</Text>
-                <ArrowUpRight color={colors.inkSoft} size={15} />
-              </Pressable>
-              {showReverse && (
-                <View style={styles.reverseCard}>
-                  <Text style={styles.reverseEyebrow}>LICENSE REVERSE · FIELD NOTES</Text>
-                  <Text style={styles.reverseTitle}>Issued for a life of looking closer.</Text>
-                  <Text style={styles.reverseBody}>Wingdex is a field journal for people who notice birds and the habitats they depend on. Observe with care; leave each place better than you found it.</Text>
-                  <View style={styles.reverseRule} />
-                  <Text style={styles.reverseSectionTitle}>REGIONAL FIELD BADGES</Text>
-                  {achievements.length > 0 ? [...achievements]
-                    .sort((first, second) =>
-                      universalRegionalRankDefinitions.findIndex((rank) => rank.id === first.rank_code)
-                      - universalRegionalRankDefinitions.findIndex((rank) => rank.id === second.rank_code))
-                    .map((achievement) => {
-                      const rankIndex = universalRegionalRankDefinitions.findIndex((rank) => rank.id === achievement.rank_code);
-                      const rank = universalRegionalRankDefinitions[rankIndex];
-                      if (!rank || rankIndex < 0) return null;
-                      return (
-                        <View key={achievement.rank_code} style={styles.reverseBadgeRow}>
+                      <View style={styles.identityCopy}>
+                        <Text style={styles.cardName} numberOfLines={1}>{profile.display_name}</Text>
+                        <Text style={styles.cardHandle} numberOfLines={1}>@{profile.username}</Text>
+                        <View style={styles.rankLine}><Trophy color="#D8BE87" size={13} /><Text style={styles.cardRank}>{currentRank.title}</Text></View>
+                      </View>
+                    </View>
+                    <View style={styles.cardBottom}>
+                      <View style={styles.cardMeta}>
+                        <Text style={styles.metaKicker}>LICENSE NUMBER</Text>
+                        <Text style={styles.licenseNumber}>{profile.license_number}</Text>
+                        <View style={styles.regionLine}>
                           <RegionalBadgeMark
-                            variant={rankIndex}
+                            variant={Math.max(0, currentRankIndex)}
                             identity={licenseBadgeIdentity}
                             regionCode={profile.home_region_code}
                             regionName={profile.home_region_name}
-                            size={43}
+                            size={38}
                           />
-                          <View style={styles.reverseBadgeCopy}>
-                            <Text style={styles.reverseBadgeTitle}>{rank.title}</Text>
-                            <Text style={styles.reverseBadgeMeta}>EARNED {new Date(achievement.unlocked_at).toLocaleDateString()}</Text>
-                            <Text style={styles.reverseBadgeMeta}>CHECKLIST {achievement.checklist_version}</Text>
+                          <View style={styles.regionCopy}>
+                            <Text style={styles.regionName}>{profile.home_region_name}</Text>
+                            <Text style={styles.regionBadgeName} numberOfLines={1}>{regionIdentity?.title}</Text>
+                            <Text style={styles.speciesMeta}>{speciesCount} recorded species</Text>
                           </View>
                         </View>
-                      );
-                    })
-                    : <Text style={styles.reverseBody}>No earned regional rank badges to display yet. Badges appear here as you reach their documented thresholds.</Text>}
-                  <View style={styles.reverseRule} />
-                  <Text style={styles.reverseSectionTitle}>SPECIAL ACHIEVEMENTS</Text>
-                  <Text style={styles.reverseBody}>No special achievements have been recorded for this license yet. Wingdex currently tracks regional rank badges only.</Text>
-                  <View style={styles.reverseRule} />
-                  <Text style={styles.metaKicker}>ISSUE DATE</Text>
-                  <Text style={styles.reverseBody}>{new Date(profile.license_issued_at).toLocaleDateString()}</Text>
-                  <Text style={[styles.metaKicker, { marginTop: 13 }]}>VERIFICATION</Text>
-                  <Text style={styles.reverseBody}>{publicUrl ?? 'Public profile URL is not configured. Set EXPO_PUBLIC_WINGDEX_PUBLIC_URL to your public HTTPS web origin.'}</Text>
-                  <Text style={styles.conservation}>PROTECT THE HABITAT. THE BIRDS WILL FOLLOW.</Text>
-                </View>
-              )}
+                        {profile.favorite_bird ? <Text style={styles.favoriteText} numberOfLines={1}>FAVORITE · {profile.favorite_bird}</Text> : null}
+                      </View>
+                      <View style={styles.qrCell}>
+                        {publicUrl ? (
+                          <QRCode value={publicUrl} size={80} backgroundColor="#FFFDF5" color="#183025" quietZone={3} />
+                        ) : (
+                          <View style={styles.privateQr}>
+                            <QrCode color="#748078" size={28} />
+                          </View>
+                        )}
+                        <Text style={styles.qrCaption}>{publicUrl ? 'SCAN LICENSE' : 'SET PUBLIC URL'}</Text>
+                      </View>
+                    </View>
+                  </>
+                )}
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => setShowReverse(!showReverse)} style={styles.reverseButton}>
+                <Text style={styles.reverseButtonText}>{showReverse ? 'VIEW LICENSE FRONT' : 'FLIP LICENSE TO REVERSE'}</Text>
+                <ArrowUpRight color={colors.inkSoft} size={15} />
+              </Pressable>
               <View style={styles.detailRow}>
                 <View>
                   <Text style={styles.detailLabel}>ISSUED</Text>
@@ -611,6 +634,7 @@ const styles = StyleSheet.create({
   tabLabelSelected: { color: colors.ink },
   section: { gap: 12 },
   licenseCard: { minHeight: 266, padding: 15, backgroundColor: '#1C382B', overflow: 'hidden', borderWidth: 1, borderColor: '#B89D68', position: 'relative' },
+  reverseLicenseCard: { backgroundColor: '#243F31' },
   cardContourOne: { position: 'absolute', width: 260, height: 260, borderRadius: 130, borderWidth: 1, borderColor: 'rgba(230,215,181,0.10)', right: -85, top: 20 },
   cardContourTwo: { position: 'absolute', width: 205, height: 205, borderRadius: 110, borderWidth: 1, borderColor: 'rgba(230,215,181,0.10)', right: -48, top: 46 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -643,17 +667,18 @@ const styles = StyleSheet.create({
   qrCaption: { color: '#314237', fontSize: 10, fontWeight: '900', letterSpacing: 0.3, marginTop: 4 },
   reverseButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-end' },
   reverseButtonText: { color: colors.inkSoft, fontSize: 10, fontWeight: '800', letterSpacing: 0.7 },
-  reverseCard: { padding: 17, backgroundColor: '#EAEADD', borderLeftWidth: 3, borderLeftColor: '#AC8B4F', gap: 7 },
-  reverseEyebrow: { color: colors.coral, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  reverseTitle: { color: colors.ink, fontSize: 17, lineHeight: 22, fontWeight: '800', marginTop: 4 },
-  reverseBody: { color: colors.inkSoft, fontSize: 12, lineHeight: 18 },
-  reverseSectionTitle: { color: colors.coral, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  reverseBadgeRow: { minHeight: 51, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, borderBottomWidth: 1, borderColor: colors.line },
+  reverseIntro: { color: '#D5DED3', fontSize: 11, lineHeight: 16, marginTop: 2 },
+  reverseBody: { color: '#D5DED3', fontSize: 11, lineHeight: 16 },
+  reverseSectionTitle: { color: '#D8BE87', fontSize: 10, fontWeight: '900', letterSpacing: 0.9, marginTop: 5 },
+  reverseBadgeRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 3, borderBottomWidth: 1, borderColor: 'rgba(229,219,192,0.2)' },
   reverseBadgeCopy: { flex: 1, minWidth: 0 },
-  reverseBadgeTitle: { color: colors.ink, fontSize: 12, fontWeight: '800' },
-  reverseBadgeMeta: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.3, marginTop: 2 },
-  reverseRule: { height: 1, backgroundColor: colors.line, marginVertical: 6 },
-  conservation: { color: colors.ink, fontSize: 10, fontWeight: '900', letterSpacing: 0.8, marginTop: 10 },
+  reverseBadgeTitle: { color: '#F6F0DF', fontSize: 11, fontWeight: '800' },
+  reverseBadgeMeta: { color: '#BFCDBD', fontSize: 9, fontWeight: '700', letterSpacing: 0.3, marginTop: 2 },
+  reverseRule: { height: 1, backgroundColor: 'rgba(229,219,192,0.3)', marginVertical: 3 },
+  favoriteBirdRow: { minHeight: 31, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderColor: 'rgba(229,219,192,0.2)' },
+  favoriteBirdNumber: { color: '#D8BE87', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  favoriteBirdName: { flex: 1, color: '#F6F0DF', fontSize: 11, fontWeight: '700' },
+  conservation: { color: '#BFCDBD', fontSize: 9, fontWeight: '900', letterSpacing: 0.7, marginTop: 7 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line, paddingVertical: 13, paddingHorizontal: 3 },
   detailLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
   detailValue: { color: colors.ink, fontSize: 12, fontWeight: '800', marginTop: 5 },
