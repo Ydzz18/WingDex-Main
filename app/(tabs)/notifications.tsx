@@ -98,7 +98,14 @@ export default function NotificationsScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.filters} accessibilityRole="tablist" accessibilityLabel="Notification filters">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroller}
+          contentContainerStyle={styles.filters}
+          accessibilityRole="tablist"
+          accessibilityLabel="Notification filters"
+        >
           {([
             ['all', 'All updates'],
             ['unread', `Unread · ${unreadCount}`],
@@ -106,10 +113,10 @@ export default function NotificationsScreen() {
           ] as const).map(([value, label]) => {
             const selected = filter === value;
             return <Pressable key={value} onPress={() => setFilter(value)} style={({ pressed }) => [styles.filter, selected && styles.filterSelected, pressed && styles.pressed]} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={label}>
-              <Text style={[styles.filterText, selected && styles.filterTextSelected]}>{label}</Text>
+              <Text numberOfLines={1} style={[styles.filterText, selected && styles.filterTextSelected]}>{label}</Text>
             </Pressable>;
           })}
-        </View>
+        </ScrollView>
 
         <View style={styles.dateRow}>
           <Text style={styles.dateTitle}>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
@@ -261,8 +268,9 @@ const styles = StyleSheet.create({
   header: { height: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 26, backgroundColor: colors.white },
   headerTitle: { color: colors.ink, fontFamily: 'Georgia', fontSize: 27, fontWeight: '700' },
-  filters: { flexDirection: 'row', gap: 12, marginTop: 18 },
-  filter: { minHeight: 57, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, borderRadius: 29, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.white },
+  filterScroller: { width: '100%', flexGrow: 0, marginTop: 18 },
+  filters: { flexDirection: 'row', gap: 12, paddingRight: 20 },
+  filter: { minHeight: 57, flexShrink: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, borderRadius: 29, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.white },
   filterSelected: { backgroundColor: '#256446', borderColor: '#256446' },
   filterText: { color: colors.ink, fontSize: 16, fontWeight: '500' },
   filterTextSelected: { color: colors.white },
