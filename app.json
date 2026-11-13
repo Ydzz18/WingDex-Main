@@ -3,24 +3,17 @@
     "name": "Wingdex",
     "slug": "wingdex",
     "scheme": "wingdex",
-    "version": "1.2.0",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "imageWidth": 240,
-      "resizeMode": "contain",
-      "backgroundColor": "#1B2E26"
-    },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "2"
+      "buildNumber": "4"
     },
     "android": {
-      "package": "com.dredre472.wingdex",
-      "versionCode": 2,
-
+      "package": "com.ydzz18.wingdex",
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#1B2E26",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -69,7 +62,16 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 240,
+          "resizeMode": "contain",
+          "backgroundColor": "#1B2E26"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

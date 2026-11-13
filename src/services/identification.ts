@@ -1,13 +1,9 @@
+import { File } from 'expo-file-system';
+import { fetch } from 'expo/fetch';
 import { Platform } from 'react-native';
 import { birdRegions, type BirdRegion } from '../data/regions';
 import type { EbirdSpecies } from './ebird';
 import { minimumObservationConfidence } from './observationRules';
-
-type NativePhotoPart = {
-  uri: string;
-  name: string;
-  type: string;
-};
 
 export type IdentificationResult = {
   commonName: string | null;
@@ -91,21 +87,19 @@ export async function identifyBird(
       : photoBlob.slice(0, photoBlob.size, uploadMimeType);
     formData.append('photo', uploadBlob, uploadFileName);
   } else {
-    const uploadMimeType = getImageMimeType(mimeType, '', uploadFileName);
+    const photoFile = new File(uri);
+    const uploadMimeType = getImageMimeType(mimeType, photoFile.type, uploadFileName);
     if (!uploadMimeType) {
       throw new Error('This photo format is not supported. Choose a JPEG, PNG, WebP, or HEIC photo.');
     }
-    const nativeFormData = formData as FormData & {
-      append(name: string, value: NativePhotoPart): void;
-    };
-    nativeFormData.append('photo', { uri, name: uploadFileName, type: uploadMimeType });
+    formData.append('photo', photoFile, uploadFileName);
   }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120_000);
   let response: Response;
   try {
-    response = await globalThis.fetch(`${baseUrl}/identify`, {
+    response = await fetch(`${baseUrl}/identify`, {
       method: 'POST',
       body: formData,
       signal: controller.signal,
