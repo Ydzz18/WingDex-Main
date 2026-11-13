@@ -9,12 +9,12 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "6"
+      "buildNumber": "7"
     },
     "android": {
       "package": "com.ydzz18.wingdex",
-      "versionCode": 6,
-      "adaptiveIcon": {
+      "versionCode": 7,
+      "adaptiveIcon": { 
         "backgroundColor": "#18352B",
         "foregroundImage": "./assets/icon.png"
       },
@@ -65,7 +65,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
+          "image": "./assets/icon.png",
           "imageWidth": 240,
           "resizeMode": "contain",
           "backgroundColor": "#18352B"
