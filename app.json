@@ -62,7 +62,7 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "@maplibre/maplibre-react-native",
+      "@maplibre/maplibre-react-native/app.plugin.js",
       [
         "expo-splash-screen",
         {
