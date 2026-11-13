@@ -1,8 +1,13 @@
-import { File } from 'expo-file-system';
-import { fetch } from 'expo/fetch';
+import { Platform } from 'react-native';
 import { birdRegions, type BirdRegion } from '../data/regions';
 import type { EbirdSpecies } from './ebird';
 import { minimumObservationConfidence } from './observationRules';
+
+type NativePhotoPart = {
+  uri: string;
+  name: string;
+  type: string;
+};
 
 export type IdentificationResult = {
   commonName: string | null;
@@ -68,21 +73,51 @@ export async function identifyBird(
     throw new Error('Bird identification is not connected yet.');
   }
 
+  const uriPath = uri.split(/[?#]/, 1)[0] ?? uri;
+  const uploadFileName = fileName || uriPath.split('/').pop() || 'bird-sighting.jpg';
   const formData = new FormData();
-  const photoFile = new File(uri);
-  const uploadFileName = fileName ?? photoFile.name;
-  const uploadMimeType = getImageMimeType(mimeType, photoFile.type, uploadFileName);
-  if (!uploadMimeType) {
-    throw new Error('This photo format is not supported. Choose a JPEG, PNG, WebP, or HEIC photo.');
+  if (Platform.OS === 'web') {
+    const photoResponse = await globalThis.fetch(uri);
+    if (!photoResponse.ok) {
+      throw new Error('Could not read the selected photo. Choose it again and retry.');
+    }
+    const photoBlob = await photoResponse.blob();
+    const uploadMimeType = getImageMimeType(mimeType, photoBlob.type, uploadFileName);
+    if (!uploadMimeType) {
+      throw new Error('This photo format is not supported. Choose a JPEG, PNG, WebP, or HEIC photo.');
+    }
+    const uploadBlob = photoBlob.type === uploadMimeType
+      ? photoBlob
+      : photoBlob.slice(0, photoBlob.size, uploadMimeType);
+    formData.append('photo', uploadBlob, uploadFileName);
+  } else {
+    const uploadMimeType = getImageMimeType(mimeType, '', uploadFileName);
+    if (!uploadMimeType) {
+      throw new Error('This photo format is not supported. Choose a JPEG, PNG, WebP, or HEIC photo.');
+    }
+    const nativeFormData = formData as FormData & {
+      append(name: string, value: NativePhotoPart): void;
+    };
+    nativeFormData.append('photo', { uri, name: uploadFileName, type: uploadMimeType });
   }
 
-  const photoBlob = new Blob([await photoFile.arrayBuffer()], { type: uploadMimeType });
-  formData.append('photo', photoBlob, uploadFileName);
-
-  const response = await fetch(`${baseUrl}/identify`, {
-    method: 'POST',
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120_000);
+  let response: Response;
+  try {
+    response = await globalThis.fetch(`${baseUrl}/identify`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('Identification timed out. Check your connection and try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const responseText = await response.text();
   if (!response.ok) {

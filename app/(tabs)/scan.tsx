@@ -42,6 +42,8 @@ export default function ScanScreen() {
   const [screenFocused, setScreenFocused] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(false);
+  const [screenHeight, setScreenHeight] = useState(0);
+  const [liveAreaBounds, setLiveAreaBounds] = useState<{ top: number; bottom: number } | null>(null);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [photo, setPhoto] = useState<CapturedPhoto | null>(null);
   const [result, setResult] = useState<IdentificationResult | null>(null);
@@ -59,6 +61,7 @@ export default function ScanScreen() {
   const saveInProgress = useRef(false);
   const cameraSupportedInApp = Platform.OS !== 'web';
   const cameraGranted = Boolean(permission?.granted);
+  const liveFrameVisible = !photo && cameraSupportedInApp && cameraGranted && !cameraError;
   const busy = capturing || identifying || choosingPhoto || saving;
 
   useFocusEffect(useCallback(() => {
@@ -293,9 +296,20 @@ export default function ScanScreen() {
       result.confidence < minimumConfidence
     : false;
   const confidentlyIdentified = Boolean(result && !uncertain);
+  const topShadeHeight = liveFrameVisible
+    ? liveAreaBounds?.top ?? 0
+    : insets.top + 230;
+  const bottomShadeHeight = liveFrameVisible
+    ? liveAreaBounds
+      ? Math.max(0, screenHeight - liveAreaBounds.bottom)
+      : 0
+    : insets.bottom + 245;
 
   return (
-    <View style={styles.screen}>
+    <View
+      style={styles.screen}
+      onLayout={({ nativeEvent }) => setScreenHeight(nativeEvent.layout.height)}
+    >
       {photo ? (
         <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFill} />
       ) : screenFocused && cameraSupportedInApp && cameraGranted && !cameraError ? (
@@ -314,8 +328,8 @@ export default function ScanScreen() {
         <View style={[StyleSheet.absoluteFill, styles.forestBackdrop]} />
       )}
 
-      <View pointerEvents="none" style={[styles.topShade, { height: insets.top + 230 }]} />
-      <View pointerEvents="none" style={[styles.bottomShade, { height: insets.bottom + 245 }]} />
+      <View pointerEvents="none" style={[styles.topShade, { height: topShadeHeight }]} />
+      <View pointerEvents="none" style={[styles.bottomShade, { height: bottomShadeHeight }]} />
 
       <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 14 }]}>
         <View style={styles.header}>
@@ -377,8 +391,14 @@ export default function ScanScreen() {
           </Text>
         </View>
 
-        {!photo && cameraSupportedInApp && cameraGranted && !cameraError ? (
-          <View style={styles.liveArea}>
+        {liveFrameVisible ? (
+          <View
+            style={styles.liveArea}
+            onLayout={({ nativeEvent }) => {
+              const { y, height } = nativeEvent.layout;
+              setLiveAreaBounds({ top: y, bottom: y + height });
+            }}
+          >
             <View style={styles.frame}>
               <View style={[styles.corner, styles.cornerTopLeft]} />
               <View style={[styles.corner, styles.cornerTopRight]} />
