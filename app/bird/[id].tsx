@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, Music2 } from 'lucide-react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Bookmark, BookmarkCheck, Check, CircleAlert, ExternalLink, MapPin, Music2 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getBird } from '../../src/data/birds';
+import { findPhilippineRegion } from '../../src/data/philippineRegions';
 import {
   getEbirdSpecies,
+  getPhilippineRegionalChecklist,
   getMacaulayAudioNameSearchUrl,
   getMacaulayAudioSearchUrl,
   type EbirdSpecies,
@@ -13,6 +16,18 @@ import {
 import { useSavedBirds } from '../../src/hooks/useSavedBirds';
 import BirdProfileView from '../../src/components/BirdProfileView';
 import { colors, rarityColors } from '../../src/theme';
+
+const exploreRegionStorageKey = 'wingdex.explore-region.v1';
+
+type RegionalChecklistState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'loaded'; listed: boolean };
+type RegionalChecklistCardProps = {
+  speciesCode?: string;
+  commonName: string;
+  scientificName: string;
+};
 
 export default function BirdDetailScreen() {
   const { id } = useLocalSearchParams<{
@@ -113,6 +128,11 @@ export default function BirdDetailScreen() {
       <Text style={styles.description}>{bird.description}</Text>
       <Text style={styles.provisional}>Rarity is a starter estimate and needs review against local sightings.</Text>
 
+      <RegionalChecklistCard
+        commonName={bird.name}
+        scientificName={bird.scientificName}
+      />
+
       <Pressable onPress={() => void toggle(bird.id)} style={styles.saveButton} accessibilityRole="button">
         {saved ? <BookmarkCheck color={colors.white} size={17} /> : <Bookmark color={colors.white} size={17} />}
         <Text style={styles.saveLabel}>{saved ? 'Remove from Pokedex' : 'Add to Pokedex'}</Text>
@@ -196,6 +216,12 @@ function EbirdSpeciesDetail({ species }: { species: EbirdSpecies }) {
           )}
         </View>
 
+        <RegionalChecklistCard
+          speciesCode={species.speciesCode}
+          commonName={species.comName}
+          scientificName={species.sciName}
+        />
+
         <Pressable
           onPress={() => void openLink(getMacaulayAudioSearchUrl(species.speciesCode), 'Macaulay Library recordings')}
           style={styles.saveButton}
@@ -217,6 +243,106 @@ function EbirdSpeciesDetail({ species }: { species: EbirdSpecies }) {
         <Text style={styles.provisional}>Taxonomy provided by eBird. Descriptions and recordings are hosted by the linked Cornell Lab services.</Text>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function RegionalChecklistCard(props: RegionalChecklistCardProps) {
+  const [retryKey, setRetryKey] = useState(0);
+  return (
+    <RegionalChecklistRequest
+      key={retryKey}
+      {...props}
+      onRetry={() => setRetryKey((current) => current + 1)}
+    />
+  );
+}
+
+function RegionalChecklistRequest({
+  speciesCode,
+  commonName,
+  scientificName,
+  onRetry,
+}: RegionalChecklistCardProps & { onRetry: () => void }) {
+  const [regionName, setRegionName] = useState<string | null>(null);
+  const [checklistState, setChecklistState] = useState<RegionalChecklistState>({ status: 'loading' });
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    setChecklistState({ status: 'loading' });
+    void (async () => {
+      const savedRegionCode = await AsyncStorage.getItem(exploreRegionStorageKey);
+      const region = findPhilippineRegion(savedRegionCode?.trim() || 'NCR');
+      if (!region) throw new Error('Your saved Explore region is invalid. Choose a valid region in Explore and try again.');
+      if (active) setRegionName(region.name);
+
+      const checklist = await getPhilippineRegionalChecklist(region.code);
+      if (checklist.regionCode !== region.code
+        || !Array.isArray(checklist.speciesCodes)
+        || !Array.isArray(checklist.species)
+        || checklist.speciesCodes.length !== checklist.species.length) {
+        throw new Error('The regional checklist is incomplete. Please try again later.');
+      }
+
+      const normalizedCode = speciesCode?.toLowerCase();
+      const normalizedCommonName = commonName.trim().toLocaleLowerCase();
+      const normalizedScientificName = scientificName.trim().toLocaleLowerCase();
+      const listed = normalizedCode
+        ? checklist.speciesCodes.some((code) => code.toLowerCase() === normalizedCode)
+        : checklist.species.some((species) =>
+          species.comName.trim().toLocaleLowerCase() === normalizedCommonName
+          || species.sciName.trim().toLocaleLowerCase() === normalizedScientificName,
+        );
+      if (active) setChecklistState({ status: 'loaded', listed });
+    })().catch((error: unknown) => {
+      if (active) {
+        setChecklistState({
+          status: 'error',
+          message: error instanceof Error ? error.message : 'The regional checklist could not be loaded.',
+        });
+      }
+    });
+    return () => { active = false; };
+  }, [commonName, scientificName, speciesCode]));
+
+  return (
+    <View style={styles.regionalChecklist}>
+      <View style={styles.regionalChecklistHeading}>
+        <MapPin color={colors.inkSoft} size={17} />
+        <View style={styles.regionalChecklistHeadingCopy}>
+          <Text style={styles.sectionLabel}>REGIONAL CHECKLIST</Text>
+          <Text style={styles.regionalChecklistRegion}>{regionName ?? 'Your Explore region'}</Text>
+        </View>
+      </View>
+      {checklistState.status === 'loading' ? (
+        <View style={styles.regionalChecklistStatus} accessibilityLiveRegion="polite">
+          <ActivityIndicator color={colors.inkSoft} size="small" />
+          <Text style={styles.regionalChecklistText}>Checking the published regional list…</Text>
+        </View>
+      ) : checklistState.status === 'error' ? (
+        <View style={styles.regionalChecklistError}>
+          <Text style={styles.regionalChecklistText}>{checklistState.message}</Text>
+          <Pressable
+            onPress={onRetry}
+            style={styles.regionalChecklistRetry}
+            accessibilityRole="button"
+          >
+            <Text style={styles.regionalChecklistRetryText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.regionalChecklistStatus} accessibilityLiveRegion="polite">
+          {checklistState.listed
+            ? <Check color={colors.inkSoft} size={17} />
+            : <CircleAlert color={colors.muted} size={17} />}
+          <Text style={[styles.regionalChecklistText, checklistState.listed && styles.regionalChecklistIncluded]}>
+            {checklistState.listed
+              ? 'This species is on the published checklist.'
+              : 'This species is not on the published checklist.'}
+          </Text>
+        </View>
+      )}
+      <Text style={styles.regionalChecklistFootnote}>Based on the region selected in Explore.</Text>
+    </View>
   );
 }
 
@@ -248,6 +374,17 @@ const styles = StyleSheet.create({
   taxonomyBlock: { marginTop: 11, padding: 14, backgroundColor: colors.leaf },
   taxonomyLabel: { color: colors.inkSoft, fontSize: 9, fontWeight: '800', letterSpacing: 1, marginTop: 10 },
   taxonomyValue: { color: colors.ink, fontSize: 13, marginTop: 3 },
+  regionalChecklist: { padding: 14, marginTop: 19, backgroundColor: '#F1F3ED', borderWidth: 1, borderColor: colors.line },
+  regionalChecklistHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  regionalChecklistHeadingCopy: { flex: 1 },
+  regionalChecklistRegion: { color: colors.ink, fontSize: 14, fontWeight: '700', marginTop: 3 },
+  regionalChecklistStatus: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 9 },
+  regionalChecklistText: { flex: 1, color: colors.inkSoft, fontSize: 11, lineHeight: 16 },
+  regionalChecklistIncluded: { color: colors.ink, fontWeight: '700' },
+  regionalChecklistError: { marginTop: 9 },
+  regionalChecklistRetry: { minHeight: 36, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 10, marginTop: 5, backgroundColor: colors.white },
+  regionalChecklistRetryText: { color: colors.ink, fontSize: 11, fontWeight: '700' },
+  regionalChecklistFootnote: { color: colors.muted, fontSize: 9, marginTop: 6 },
   audioButton: {
     minHeight: 46,
     flexDirection: 'row',
