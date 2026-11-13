@@ -74,11 +74,13 @@ export default function NearbyScreen() {
   const [checklistRegionCode, setChecklistRegionCode] = useState('');
   const [loadingChecklists, setLoadingChecklists] = useState(false);
   const [selectedSightingId, setSelectedSightingId] = useState('');
+  const [selectedHotspotId, setSelectedHotspotId] = useState('');
   const [location, setLocation] = useState<UserLocation | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [requestingLocation, setRequestingLocation] = useState(false);
   const selectedSighting = sightings.find((sighting) => sighting.id === selectedSightingId);
+  const selectedHotspot = hotspots.find((hotspot) => hotspot.locId === selectedHotspotId);
 
   const requestLocation = async () => {
     setRequestingLocation(true);
@@ -86,6 +88,7 @@ export default function NearbyScreen() {
     setDataError(null);
     setSightings([]);
     setHotspots([]);
+    setSelectedHotspotId('');
     setChecklists([]);
     setRegionalObservations([]);
     try {
@@ -243,10 +246,26 @@ export default function NearbyScreen() {
           sightings={sightings}
           selectedSightingId={selectedSightingId}
           onSelectSighting={setSelectedSightingId}
+          hotspots={hotspots}
+          selectedHotspotId={selectedHotspotId}
+          onSelectHotspot={setSelectedHotspotId}
         />
 
         {requestingLocation && <ActivityIndicator color={colors.inkSoft} style={styles.loading} />}
         {dataError && <Text style={styles.locationError}>{dataError}</Text>}
+        {selectedHotspot && (
+          <View style={styles.selectedHotspotCard}>
+            <MapPin color={colors.inkSoft} size={17} />
+            <View style={styles.hotspotCopy}>
+              <Text style={styles.hotspotName}>{selectedHotspot.name}</Text>
+              <Text style={styles.hotspotMeta}>
+                {selectedHotspot.numSpeciesAllTime !== undefined
+                  ? `${selectedHotspot.numSpeciesAllTime} species recorded`
+                  : 'eBird hotspot'}
+              </Text>
+            </View>
+          </View>
+        )}
         {!requestingLocation && location && sightings.length === 0 && !dataError && (
           <Text style={styles.emptyState}>No recent eBird observations were found within 25 km.</Text>
         )}
@@ -301,15 +320,10 @@ export default function NearbyScreen() {
             : hotspots.slice(0, 8).map((hotspot) => (
               <Pressable
                 key={hotspot.locId}
-                onPress={() => {
-                  const url = `https://ebird.org/hotspot/${encodeURIComponent(hotspot.locId)}`;
-                  void Linking.openURL(url).catch(() => {
-                    Alert.alert('Could not open hotspot', 'Please try again.');
-                  });
-                }}
+                onPress={() => setSelectedHotspotId(hotspot.locId)}
                 style={styles.hotspotRow}
-                accessibilityRole="link"
-                accessibilityLabel={`Open eBird hotspot ${hotspot.name}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Show eBird hotspot ${hotspot.name} on the map`}
               >
                 <MapPin color={colors.inkSoft} size={17} />
                 <View style={styles.hotspotCopy}>
@@ -481,6 +495,19 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
+  },
+  selectedHotspotCard: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D8E2D4',
+    backgroundColor: '#F0F4ED',
   },
   sightingTop: { flexDirection: 'row', alignItems: 'center' },
   birdArtwork: {

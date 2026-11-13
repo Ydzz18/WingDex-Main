@@ -2,6 +2,7 @@ import { Camera, Map, Marker, type CameraRef } from '@maplibre/maplibre-react-na
 import { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { NearbyMapSighting } from './nearbyMapTypes';
+import type { EbirdHotspot } from '../services/ebird';
 import type { UserLocation } from '../services/location';
 
 type Props = {
@@ -9,6 +10,9 @@ type Props = {
   sightings: NearbyMapSighting[];
   selectedSightingId: string;
   onSelectSighting: (id: string) => void;
+  hotspots: EbirdHotspot[];
+  selectedHotspotId: string;
+  onSelectHotspot: (id: string) => void;
 };
 
 const mapStyle = 'https://tiles.openfreemap.org/styles/liberty';
@@ -19,6 +23,9 @@ export function NearbyMap({
   sightings,
   selectedSightingId,
   onSelectSighting,
+  hotspots,
+  selectedHotspotId,
+  onSelectHotspot,
 }: Props) {
   const cameraRef = useRef<CameraRef>(null);
 
@@ -30,6 +37,16 @@ export function NearbyMap({
       duration: 800,
     });
   }, [location]);
+
+  useEffect(() => {
+    const hotspot = hotspots.find((item) => item.locId === selectedHotspotId);
+    if (!hotspot) return;
+    cameraRef.current?.easeTo({
+      center: [hotspot.lng, hotspot.lat],
+      zoom: 14,
+      duration: 800,
+    });
+  }, [hotspots, selectedHotspotId]);
 
   return (
     <View style={styles.container}>
@@ -71,6 +88,22 @@ export function NearbyMap({
             >
               <View style={[styles.sightingMarker, selected && styles.selectedSightingMarker]}>
                 <Text style={styles.sightingMarkerText}>🐦</Text>
+              </View>
+            </Marker>
+          );
+        })}
+        {hotspots.map((hotspot) => {
+          const selected = hotspot.locId === selectedHotspotId;
+          return (
+            <Marker
+              key={`hotspot-${hotspot.locId}`}
+              id={`hotspot-${hotspot.locId}`}
+              lngLat={[hotspot.lng, hotspot.lat]}
+              selected={selected}
+              onPress={() => onSelectHotspot(hotspot.locId)}
+            >
+              <View style={[styles.hotspotMarker, selected && styles.selectedHotspotMarker]}>
+                <Text style={styles.hotspotMarkerText}>H</Text>
               </View>
             </Marker>
           );
@@ -125,5 +158,27 @@ const styles = StyleSheet.create({
   sightingMarkerText: {
     fontSize: 17,
     lineHeight: 20,
+  },
+  hotspotMarker: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: '#6A855F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+  },
+  selectedHotspotMarker: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#263c31',
+  },
+  hotspotMarkerText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });

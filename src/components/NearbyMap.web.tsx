@@ -2,6 +2,7 @@ import { AttributionControl, Map, Marker, NavigationControl, setWorkerUrl } from
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
 import type { NearbyMapSighting } from './nearbyMapTypes';
+import type { EbirdHotspot } from '../services/ebird';
 import type { UserLocation } from '../services/location';
 
 type Props = {
@@ -9,6 +10,9 @@ type Props = {
   sightings: NearbyMapSighting[];
   selectedSightingId: string;
   onSelectSighting: (id: string) => void;
+  hotspots: EbirdHotspot[];
+  selectedHotspotId: string;
+  onSelectHotspot: (id: string) => void;
 };
 
 const defaultCenter: [number, number] = [-122.626, 45.522];
@@ -19,6 +23,9 @@ export function NearbyMap({
   sightings,
   selectedSightingId,
   onSelectSighting,
+  hotspots,
+  selectedHotspotId,
+  onSelectHotspot,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -60,6 +67,16 @@ export function NearbyMap({
   }, [location]);
 
   useEffect(() => {
+    const hotspot = hotspots.find((item) => item.locId === selectedHotspotId);
+    if (!hotspot) return;
+    mapRef.current?.easeTo({
+      center: [hotspot.lng, hotspot.lat],
+      zoom: 14,
+      duration: 800,
+    });
+  }, [hotspots, selectedHotspotId]);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
@@ -88,6 +105,35 @@ export function NearbyMap({
       return new Marker({ element, anchor: 'center' })
         .setLngLat([sighting.longitude, sighting.latitude])
         .addTo(map);
+    });
+
+    hotspots.forEach((hotspot) => {
+      const selected = hotspot.locId === selectedHotspotId;
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.className = 'wingdex-hotspot-marker';
+      element.setAttribute('aria-label', `Show eBird hotspot ${hotspot.name}`);
+      element.setAttribute('aria-pressed', String(selected));
+      element.textContent = 'H';
+      Object.assign(element.style, {
+        width: selected ? '38px' : '30px',
+        height: selected ? '38px' : '30px',
+        border: '2px solid #fff',
+        borderRadius: '50%',
+        background: selected ? '#263c31' : '#6A855F',
+        boxShadow: '0 3px 8px rgba(38,57,47,.25)',
+        color: '#fff',
+        cursor: 'pointer',
+        fontSize: '12px',
+        fontWeight: '800',
+        padding: '0',
+      });
+      element.addEventListener('click', () => onSelectHotspot(hotspot.locId));
+      markers.push(
+        new Marker({ element, anchor: 'center' })
+          .setLngLat([hotspot.lng, hotspot.lat])
+          .addTo(map),
+      );
     });
 
     if (location) {
@@ -120,13 +166,13 @@ export function NearbyMap({
     }
 
     return () => markers.forEach((marker) => marker.remove());
-  }, [location, onSelectSighting, selectedSightingId, sightings]);
+  }, [hotspots, location, onSelectHotspot, onSelectSighting, selectedHotspotId, selectedSightingId, sightings]);
 
   return (
     <div
       ref={containerRef}
       role="application"
-      aria-label="Map of nearby bird sightings"
+      aria-label="Map of nearby bird sightings and hotspots"
       style={{
         width: '100%',
         height: 420,
