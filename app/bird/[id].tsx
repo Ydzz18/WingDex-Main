@@ -3,8 +3,7 @@ import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleS
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, Music2 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { birds, getBird, type Bird } from '../../src/data/birds';
-import type { BirdObservation } from '../../src/services/collection';
+import { getBird } from '../../src/data/birds';
 import {
   getEbirdSpecies,
   getMacaulayAudioNameSearchUrl,
@@ -12,15 +11,15 @@ import {
   type EbirdSpecies,
 } from '../../src/services/ebird';
 import { useSavedBirds } from '../../src/hooks/useSavedBirds';
+import BirdProfileView from '../../src/components/BirdProfileView';
 import { colors, rarityColors } from '../../src/theme';
 
 export default function BirdDetailScreen() {
-  const { id, locationUnavailable } = useLocalSearchParams<{
+  const { id } = useLocalSearchParams<{
     id: string;
-    locationUnavailable?: string;
   }>();
   const bird = getBird(id);
-  const { savedIds, observations, toggle } = useSavedBirds();
+  const { savedIds, observations, loaded, toggle } = useSavedBirds();
   const [ebirdLookup, setEbirdLookup] = useState<{
     speciesCode: string;
     species?: EbirdSpecies;
@@ -32,10 +31,6 @@ export default function BirdDetailScreen() {
     && ebirdLookup?.speciesCode.toLowerCase() === ebirdSpeciesCode.toLowerCase()
     ? ebirdLookup
     : null;
-  const guideBird = observation && birds.find((item) =>
-    item.scientificName.toLowerCase() === observation.scientificName?.toLowerCase() ||
-    item.name.toLowerCase() === observation.commonName?.toLowerCase()
-  );
   const saved = bird ? savedIds.includes(bird.id) : false;
   const identifiedObservation = bird && observations.find((observation) =>
     observation.photoUri && (
@@ -64,6 +59,14 @@ export default function BirdDetailScreen() {
 
   if (activeEbirdLookup?.species) return <EbirdSpeciesDetail species={activeEbirdLookup.species} />;
 
+  if (!bird && !observation && !loaded && !ebirdSpeciesCode) {
+    return (
+      <SafeAreaView style={styles.notFound} edges={['top', 'bottom']}>
+        <ActivityIndicator color={colors.inkSoft} />
+      </SafeAreaView>
+    );
+  }
+
   if (!bird && !observation) {
     return (
       <SafeAreaView style={styles.notFound} edges={['top', 'bottom']}>
@@ -76,13 +79,7 @@ export default function BirdDetailScreen() {
   }
 
   if (!bird && observation) {
-    return (
-      <ObservationDetailView
-        observation={observation}
-        guideBird={guideBird}
-        locationUnavailable={locationUnavailable === 'true'}
-      />
-    );
+    return <BirdProfileView />;
   }
 
   if (!bird) return null;
@@ -269,139 +266,4 @@ const styles = StyleSheet.create({
   localNote: { color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 13, textAlign: 'center' },
   notFound: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
   notFoundTitle: { color: colors.ink, fontFamily: 'Georgia', fontSize: 24 },
-});
-
-function ObservationDetailView({
-  observation,
-  guideBird,
-  locationUnavailable,
-}: {
-  observation: BirdObservation;
-  guideBird: Bird | undefined;
-  locationUnavailable: boolean;
-}) {
-  const description = guideBird?.description ?? observation.description;
-  const ebirdSpecies = observation.ebirdSpecies;
-  const openLink = async (url: string, title: string) => {
-    try {
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert(`Could not open ${title}`, 'Please try again.');
-    }
-  };
-
-  return (
-    <SafeAreaView style={observationStyles.screen} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={observationStyles.content}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Go back">
-          <ArrowLeft color={colors.ink} size={19} />
-          <Text style={styles.backLabel}>POKEDEX</Text>
-        </Pressable>
-        <View style={observationStyles.device}>
-          <View style={observationStyles.deviceTop}>
-            <View style={observationStyles.lens} />
-            <View style={observationStyles.indicators}><View style={observationStyles.indicator} /><View style={[observationStyles.indicator, observationStyles.dim]} /></View>
-            <Text style={observationStyles.deviceCode}>SIGHTING RECORD</Text>
-          </View>
-          <View style={observationStyles.display}>
-            {observation.photoUri ? (
-              <Image source={{ uri: observation.photoUri }} style={observationStyles.observationImage} />
-            ) : (
-              <View style={observationStyles.placeholder}><Text style={observationStyles.question}>?</Text></View>
-            )}
-            <Text style={observationStyles.entryNumber}>FIELD ENTRY / {observation.id.slice(-6).toUpperCase()}</Text>
-            <Text style={observationStyles.name}>{observation.commonName ?? 'Unidentified bird'}</Text>
-            {observation.scientificName && <Text style={observationStyles.scientific}>{observation.scientificName}</Text>}
-            <View style={observationStyles.rule} />
-            <Text style={observationStyles.sectionLabel}>{guideBird ? 'FIELD GUIDE DESCRIPTION' : 'IDENTIFICATION NOTE'}</Text>
-            <Text style={observationStyles.description}>{description ?? 'No species description was saved for this sighting.'}</Text>
-            <View style={observationStyles.metaBlock}>
-              <Text style={observationStyles.metaLabel}>RANGE</Text>
-              <Text style={observationStyles.metaValue}>{observation.regions.join(', ') || 'Unknown'}</Text>
-              <Text style={observationStyles.metaLabel}>RECORDED</Text>
-              <Text style={observationStyles.metaValue}>{new Date(observation.identifiedAt).toLocaleString()}</Text>
-              <Text style={observationStyles.metaLabel}>LOCATION</Text>
-              <Text style={observationStyles.metaValue}>
-                {observation.location
-                  ? `${observation.location.latitude.toFixed(5)}, ${observation.location.longitude.toFixed(5)}`
-                  : locationUnavailable
-                    ? 'Location unavailable · sighting saved without coordinates'
-                    : 'No location saved'}
-              </Text>
-              {observation.commonName && (
-                <>
-                  <Text style={observationStyles.metaLabel}>IDENTIFICATION CONFIDENCE</Text>
-                  <Text style={observationStyles.metaValue}>{Math.round(observation.confidence * 100)}%</Text>
-                </>
-              )}
-            </View>
-            {ebirdSpecies && (
-              <View style={observationStyles.ebirdBlock}>
-                <Text style={observationStyles.sectionLabel}>EBIRD TAXONOMY</Text>
-                <Text style={observationStyles.ebirdName}>{ebirdSpecies.comName}</Text>
-                <Text style={observationStyles.scientific}>{ebirdSpecies.sciName}</Text>
-                <Text style={observationStyles.metaValue}>
-                  {ebirdSpecies.familyComName ?? ebirdSpecies.familySciName ?? 'Bird family unavailable'}
-                  {' · '}{ebirdSpecies.category}
-                </Text>
-                <Pressable
-                  onPress={() => void openLink(getMacaulayAudioSearchUrl(ebirdSpecies.speciesCode), 'Macaulay Library recordings')}
-                  style={observationStyles.ebirdLink}
-                  accessibilityRole="link"
-                >
-                  <Text style={observationStyles.ebirdLinkText}>Find audio recordings in Macaulay Library</Text>
-                  <ExternalLink color={colors.inkSoft} size={13} />
-                </Pressable>
-                <Pressable
-                  onPress={() => void openLink(`https://ebird.org/species/${encodeURIComponent(ebirdSpecies.speciesCode)}`, 'eBird species information')}
-                  style={observationStyles.ebirdLink}
-                  accessibilityRole="link"
-                >
-                  <Text style={observationStyles.ebirdLinkText}>Open species information on eBird</Text>
-                  <ExternalLink color={colors.inkSoft} size={13} />
-                </Pressable>
-              </View>
-            )}
-            {observation.ebirdLookupError && (
-              <Text style={observationStyles.ebirdWarning}>
-                eBird species details could not be loaded: {observation.ebirdLookupError}
-              </Text>
-            )}
-          </View>
-        </View>
-        <Text style={observationStyles.note}>Identification notes are generated from the submitted photo and may need verification.</Text>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-const observationStyles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.paper },
-  content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 28 },
-  device: { backgroundColor: colors.coral, borderWidth: 1, borderColor: colors.danger, borderBottomWidth: 4, borderBottomColor: colors.danger, padding: 11 },
-  deviceTop: { height: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 3, marginBottom: 8 },
-  lens: { width: 17, height: 17, borderWidth: 2, borderColor: colors.coralPale, backgroundColor: '#4E9DB2' },
-  indicators: { flexDirection: 'row', gap: 4 },
-  indicator: { width: 6, height: 6, backgroundColor: colors.yellow },
-  dim: { backgroundColor: colors.danger },
-  deviceCode: { color: colors.coralPale, fontSize: 8, fontWeight: '800', letterSpacing: 1, marginLeft: 'auto' },
-  display: { borderWidth: 3, borderColor: colors.ink, backgroundColor: colors.leaf, padding: 12 },
-  observationImage: { width: '100%', height: 225, backgroundColor: colors.leafDeep },
-  placeholder: { height: 150, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.leafDeep },
-  question: { color: colors.ink, fontFamily: 'Georgia', fontSize: 55 },
-  entryNumber: { color: colors.inkSoft, fontSize: 9, fontWeight: '800', letterSpacing: 1, marginTop: 14 },
-  name: { color: colors.ink, fontFamily: 'Georgia', fontSize: 24, lineHeight: 29, marginTop: 5 },
-  scientific: { color: colors.inkSoft, fontSize: 12, fontStyle: 'italic', marginTop: 4 },
-  rule: { height: 1, backgroundColor: colors.leafDeep, marginVertical: 16 },
-  sectionLabel: { color: colors.coral, fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
-  description: { color: colors.ink, fontSize: 14, lineHeight: 21, marginTop: 7 },
-  metaBlock: { marginTop: 18, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.leafDeep },
-  metaLabel: { color: colors.inkSoft, fontSize: 8, fontWeight: '800', letterSpacing: 1, marginTop: 8 },
-  metaValue: { color: colors.ink, fontSize: 11, lineHeight: 16, marginTop: 2 },
-  ebirdBlock: { marginTop: 17, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.leafDeep },
-  ebirdName: { color: colors.ink, fontFamily: 'Georgia', fontSize: 18, marginTop: 7 },
-  ebirdLink: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  ebirdLinkText: { color: colors.ink, fontSize: 11, textDecorationLine: 'underline' },
-  ebirdWarning: { color: colors.danger, fontSize: 11, lineHeight: 16, marginTop: 12 },
-  note: { color: colors.muted, fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 14 },
 });

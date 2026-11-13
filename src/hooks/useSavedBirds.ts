@@ -17,6 +17,7 @@ import { supabase } from '../services/supabase';
 export function useSavedBirds() {
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [observations, setObservations] = useState<BirdObservation[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const [syncError, setSyncError] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -63,6 +64,7 @@ export function useSavedBirds() {
         if (collectionUserId.current !== userId) {
           setSavedIds([]);
           setObservations([]);
+          setLoaded(false);
           setStorageError(false);
           setSyncError(false);
           collectionUserId.current = userId;
@@ -72,11 +74,15 @@ export function useSavedBirds() {
         if (active) {
           setSavedIds(ids);
           setObservations(savedObservations);
+          setLoaded(true);
           setStorageError(false);
           if (userId) void sync();
         }
       })().catch(() => {
-        if (active) setStorageError(true);
+        if (active) {
+          setLoaded(true);
+          setStorageError(true);
+        }
       });
 
       return () => {
@@ -122,5 +128,5 @@ export function useSavedBirds() {
     }
   };
 
-  return { savedIds, observations, storageError, syncError, syncing, retrySync: sync, toggle, add, addObservation };
+  return { savedIds, observations, loaded, storageError, syncError, syncing, retrySync: sync, toggle, add, addObservation };
 }
