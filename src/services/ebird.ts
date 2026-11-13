@@ -44,6 +44,15 @@ export type EbirdChecklist = {
   userDisplayName?: string;
 };
 
+export type EbirdRegionalChecklist = {
+  regionCode: string;
+  regionName: string;
+  speciesCodes: string[];
+  species: EbirdSpecies[];
+  version: string;
+  asOf: string;
+};
+
 function getApiBaseUrl() {
   const baseUrl = process.env.EXPO_PUBLIC_WINGDEX_API_URL?.replace(/\/+$/, '');
   if (!baseUrl) throw new Error('eBird data is not connected. Configure the Wingdex backend URL.');
@@ -109,6 +118,10 @@ export function getRegionalEbirdObservations(
 
 export function getEbirdChecklists(regionCode: string, date: string): Promise<EbirdChecklist[]> {
   return getJson(`/ebird/checklists/${encodeURIComponent(regionCode)}/${encodeURIComponent(date)}`);
+}
+
+export function getPhilippineRegionalChecklist(regionCode: string): Promise<EbirdRegionalChecklist> {
+  return getJson(`/ebird/checklists/${encodeURIComponent(regionCode)}/species`);
 }
 
 export function getEbirdSpeciesObservations(
