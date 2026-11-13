@@ -3,17 +3,17 @@
     "name": "Wingdex",
     "slug": "wingdex",
     "scheme": "wingdex",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "5"
+      "buildNumber": "6"
     },
     "android": {
       "package": "com.ydzz18.wingdex",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#1B2E26",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,7 +28,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.svg"
     },
     "plugins": [
       "expo-router",
