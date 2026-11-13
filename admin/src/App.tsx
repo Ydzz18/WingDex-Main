@@ -24,7 +24,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { philippineRegions } from '../../src/data/philippineRegions';
+import { philippineRegions } from './data/philippineRegions';
 
 type Section = 'overview' | 'users' | 'collections' | 'badges' | 'ranks' | 'regional-ranks' | 'checklists' | 'announcements';
 type DataRow = Record<string, unknown>;
