@@ -17,6 +17,7 @@ Identifying a bird can be difficult without expert knowledge or a field guide. E
 - **Identify a bird:** Submit a photo for AI-assisted identification. The backend checks the result and can enrich a recognized species with eBird taxonomy.
 - **Explore birds:** Browse and search a starter directory, view bird profiles, and filter species by region.
 - **Explore nearby:** With location permission, find nearby eBird observations and hotspots, or browse regional checklists.
+- **Branded startup:** A native Expo splash screen displays the Wingdex icon before the animated in-app intro.
 - **Keep a field journal:** Save observations and species. Records are stored on-device first and can sync to the signed-in user's Supabase account when online.
 - **Manage an account:** Sign in, complete the field profile, and view a public Birding License with profile details and achievements.
 - **Administer content:** The separate admin portal provides operational metrics and tools for managing published birding content.
