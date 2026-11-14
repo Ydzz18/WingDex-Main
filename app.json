@@ -5,7 +5,7 @@
     "scheme": "wingdex",
     "version": "1.3.1",
     "orientation": "portrait",
-    "icon": "./assets/favicon.svg",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -14,9 +14,9 @@
     "android": {
       "package": "com.ydzz18.wingdex",
       "versionCode": 8,
-      "adaptiveIcon": { 
+      "adaptiveIcon": {
         "backgroundColor": "#18352B",
-        "foregroundImage": "./assets/favicon.svg"
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -27,7 +27,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.svg"
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -65,13 +65,14 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/favicon.svg",
+          "image": "./assets/splash-icon.png",
           "imageWidth": 240,
           "resizeMode": "contain",
           "backgroundColor": "#18352B"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
@@ -79,8 +80,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "49fd71eb-2024-4848-81de-13023ce7c545"
+        "projectId": "3c906a48-ffc7-461c-a9d2-5bfcc87b9a23"
       }
-    }
+    },
+    "owner": "broski12"
   }
 }
