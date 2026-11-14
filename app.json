@@ -62,15 +62,6 @@
         }
       ],
       "@maplibre/maplibre-react-native/app.plugin.js",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 240,
-          "resizeMode": "contain",
-          "backgroundColor": "#18352B"
-        }
-      ],
       "expo-sharing",
       "expo-asset"
     ],
