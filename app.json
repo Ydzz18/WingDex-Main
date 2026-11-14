@@ -3,17 +3,17 @@
     "name": "Wingdex",
     "slug": "wingdex",
     "scheme": "wingdex",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "8"
+      "buildNumber": "9"
     },
     "android": {
       "package": "com.ydzz18.wingdex",
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "backgroundColor": "#18352B",
         "foregroundImage": "./assets/android-icon-foreground.png"
