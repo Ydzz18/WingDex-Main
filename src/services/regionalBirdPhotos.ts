@@ -67,7 +67,12 @@ function stripMarkup(value: string) {
 async function fetchApiRecord(url: string, signal: AbortSignal, source: string) {
   let response: Response;
   try {
-    response = await fetch(url, { signal });
+    response = await fetch(url, {
+      signal,
+      headers: {
+        'Api-User-Agent': 'Wingdex/1.3.2 (https://wingdex-lac.vercel.app/)',
+      },
+    });
   } catch (error) {
     if (signal.aborted) throw error;
     throw new Error(`Could not reach ${source} to load bird photos.`);
