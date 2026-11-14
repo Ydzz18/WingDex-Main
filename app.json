@@ -5,7 +5,7 @@
     "scheme": "wingdex",
     "version": "1.3.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/favicon.svg",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -16,7 +16,7 @@
       "versionCode": 7,
       "adaptiveIcon": { 
         "backgroundColor": "#18352B",
-        "foregroundImage": "./assets/icon.png"
+        "foregroundImage": "./assets/favicon.svg"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -27,7 +27,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.svg"
     },
     "plugins": [
       "expo-router",
@@ -65,7 +65,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/icon.png",
+          "image": "./assets/favicon.svg",
           "imageWidth": 240,
           "resizeMode": "contain",
           "backgroundColor": "#18352B"

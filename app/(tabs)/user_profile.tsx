@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -15,8 +15,8 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
-import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { captureRef } from 'react-native-view-shot';
 import { router, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import {
   ArrowUpRight,
@@ -68,127 +68,6 @@ const tabItems: { id: ProfileTab; label: string; icon: typeof BadgeCheck }[] = [
 ];
 const birdNamesById = new Map([...birds, ...worldBirds].map((bird) => [bird.id, bird.name]));
 
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[character] ?? character);
-}
-
-function buildLicensePdfHtml({
-  profile,
-  currentRankTitle,
-  regionBadgeTitle,
-  speciesCount,
-  achievements,
-  favoriteBirds,
-  publicUrl,
-}: {
-  profile: BirdingLicenseProfile;
-  currentRankTitle: string;
-  regionBadgeTitle: string;
-  speciesCount: number;
-  achievements: RegionalAchievement[];
-  favoriteBirds: string[];
-  publicUrl: string | null;
-}) {
-  const badgeItems = [...achievements]
-    .sort((first, second) =>
-      universalRegionalRankDefinitions.findIndex((rank) => rank.id === first.rank_code)
-      - universalRegionalRankDefinitions.findIndex((rank) => rank.id === second.rank_code))
-    .map((achievement) => {
-      const rank = universalRegionalRankDefinitions.find((item) => item.id === achievement.rank_code);
-      return rank
-        ? `<div class="badge"><strong>${escapeHtml(rank.title)}</strong><span>Earned ${escapeHtml(new Date(achievement.unlocked_at).toLocaleDateString())}</span></div>`
-        : '';
-    })
-    .filter(Boolean)
-    .join('');
-  const favoriteItems = favoriteBirds.length > 0
-    ? favoriteBirds.map((birdName, index) => `<div class="favorite"><b>0${index + 1}</b>${escapeHtml(birdName)}</div>`).join('')
-    : '<div class="empty">No favorite birds listed yet.</div>';
-  const displayName = escapeHtml(profile.display_name);
-  const initials = escapeHtml(profile.display_name.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase() || 'B');
-  const safePublicUrl = publicUrl ? escapeHtml(publicUrl) : '';
-  const publicLink = publicUrl
-    ? `<a href="${safePublicUrl}">View your public license · ${safePublicUrl}</a>`
-    : 'Public license link unavailable';
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      @page { size: landscape; margin: 0; }
-      html, body { margin: 0; width: 842px; height: 595px; background: #f2f1e9; font-family: Arial, Helvetica, sans-serif; }
-      .sheet { width: 842px; height: 595px; padding: 60px 24px; display: flex; align-items: center; justify-content: center; gap: 20px; }
-      .card { position: relative; overflow: hidden; width: 387px; height: 260px; padding: 20px; color: #f6f0df; background: #1c382b; border: 1px solid #b89d68; border-radius: 12px; }
-      .card:after { content: ""; position: absolute; width: 190px; height: 190px; right: -80px; top: 60px; border: 1px solid rgba(230,215,181,.14); border-radius: 50%; pointer-events: none; }
-      .header { display: flex; align-items: center; justify-content: space-between; }
-      .wordmark { font-size: 15px; font-weight: 900; letter-spacing: 2px; }
-      .caption, .kicker { color: #bfcdbe; font-size: 8px; font-weight: 700; letter-spacing: 1px; margin-top: 4px; }
-      .stamp { padding: 8px 6px; color: #d8be87; border: 1px solid #c8ac70; border-radius: 50%; font-size: 8px; font-weight: 900; letter-spacing: .5px; text-align: center; }
-      .rule { height: 1px; margin: 12px 0; background: rgba(229,219,192,.3); }
-      .identity { display: flex; align-items: center; gap: 10px; }
-      .initials { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; color: #e6d7b5; background: #45614f; border: 1px solid #d8be87; border-radius: 50%; font-size: 15px; font-weight: 800; }
-      .name { max-width: 260px; overflow: hidden; color: #fbf7ec; font-size: 15px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-      .handle { color: #c7d3c8; font-size: 9px; margin-top: 3px; }
-      .rank { color: #e4d2a7; font-size: 9px; font-weight: 800; letter-spacing: .4px; margin-top: 5px; }
-      .details { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
-      .meta { min-width: 0; }
-      .label { color: #b8c6ba; font-size: 8px; font-weight: 800; letter-spacing: .8px; }
-      .value { color: #f8f3e4; font-size: 11px; font-weight: 800; margin-top: 4px; }
-      .region { color: #e5e8dc; font-size: 9px; font-weight: 700; margin-top: 11px; }
-      .region-badge, .species { color: #d9c793; font-size: 8px; margin-top: 3px; }
-      .favorite-one { color: #d9c793; font-size: 8px; font-weight: 700; margin-top: 9px; }
-      .link { position: absolute; left: 20px; right: 20px; bottom: 13px; overflow: hidden; color: #d9e7a9; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
-      .link a { color: inherit; text-decoration: none; }
-      .reverse-title { color: #d8be87; font-size: 9px; font-weight: 900; letter-spacing: .9px; margin-top: 6px; }
-      .intro { color: #d5ded3; font-size: 9px; line-height: 1.4; margin-top: 8px; }
-      .badges { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-top: 7px; }
-      .badge { min-width: 0; padding: 5px 7px; background: rgba(255,255,255,.07); border-left: 2px solid #d8be87; }
-      .badge strong, .badge span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .badge strong { color: #f6f0df; font-size: 8px; }
-      .badge span { color: #bfcdbe; font-size: 7px; margin-top: 2px; }
-      .favorites { display: flex; gap: 7px; margin-top: 7px; }
-      .favorite { min-width: 0; flex: 1; padding: 5px 6px; overflow: hidden; color: #f6f0df; background: rgba(255,255,255,.07); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-      .favorite b { color: #d8be87; margin-right: 5px; }
-      .empty { color: #d5ded3; font-size: 8px; margin-top: 6px; }
-      .conservation { position: absolute; left: 20px; bottom: 13px; color: #bfcdbe; font-size: 7px; font-weight: 900; letter-spacing: .6px; }
-    </style>
-  </head>
-  <body>
-    <main class="sheet">
-      <section class="card">
-        <div class="header"><div><div class="wordmark">WINGDEX</div><div class="caption">BIRD WATCHER LICENSE</div></div><div class="stamp">FIELD<br />ISSUED</div></div>
-        <div class="rule"></div>
-        <div class="identity"><div class="initials">${initials}</div><div><div class="name">${displayName}</div><div class="handle">@${escapeHtml(profile.username)}</div><div class="rank">${escapeHtml(currentRankTitle)}</div></div></div>
-        <div class="details">
-          <div class="meta"><div class="label">LICENSE NUMBER</div><div class="value">${escapeHtml(profile.license_number)}</div><div class="region">${escapeHtml(profile.home_region_name)}</div><div class="region-badge">${escapeHtml(regionBadgeTitle)}</div><div class="species">${speciesCount.toLocaleString()} recorded species</div>${favoriteBirds[0] ? `<div class="favorite-one">FAVORITE · ${escapeHtml(favoriteBirds[0])}</div>` : ''}</div>
-          <div class="meta" style="text-align:right"><div class="label">ISSUED</div><div class="value">${escapeHtml(new Date(profile.license_issued_at).toLocaleDateString())}</div></div>
-        </div>
-        <div class="link">${publicLink}</div>
-      </section>
-      <section class="card">
-        <div class="header"><div><div class="wordmark">WINGDEX</div><div class="caption">LICENSE REVERSE · FIELD NOTES</div></div></div>
-        <div class="rule"></div>
-        <div class="intro">A life of looking closer, and the field badges earned along the way.</div>
-        <div class="reverse-title">REGIONAL FIELD BADGES</div>
-        <div class="badges">${badgeItems || '<div class="empty">Your regional badges will appear here as you reach their thresholds.</div>'}</div>
-        <div class="reverse-title">TOP 3 FAVORITE BIRDS</div>
-        <div class="favorites">${favoriteItems}</div>
-        <div class="conservation">PROTECT THE HABITAT. THE BIRDS WILL FOLLOW.</div>
-      </section>
-    </main>
-  </body>
-</html>`;
-}
-
 export default function UserProfileScreen() {
   const insets = useSafeAreaInsets();
   const { authNotice } = useLocalSearchParams<{ authNotice?: string }>();
@@ -200,6 +79,7 @@ export default function UserProfileScreen() {
   const [activeTab, setActiveTab] = useState<ProfileTab>('license');
   const [showReverse, setShowReverse] = useState(false);
   const [licenseFlip] = useState(() => new Animated.Value(0));
+  const licenseCardRef = useRef<View>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -271,52 +151,39 @@ export default function UserProfileScreen() {
     }
   };
 
-  const downloadLicense = async () => {
+  const downloadLicenseImage = async () => {
     if (!profile) return;
     setError(null);
     setNotice(null);
     setLicenseAction('download');
-    let printWindow: Window | null = null;
     try {
-      if (Platform.OS === 'web') {
-        printWindow = window.open('', '_blank');
-        if (!printWindow) throw new Error('Allow pop-ups for WingDex to download your license.');
-      }
-      const html = buildLicensePdfHtml({
-        profile,
-        currentRankTitle: currentRank.title,
-        regionBadgeTitle: regionIdentity?.title ?? profile.home_region_name,
-        speciesCount,
-        achievements,
-        favoriteBirds,
-        publicUrl,
+      const side = showReverse ? 'reverse' : 'front';
+      const imageUri = await captureRef(licenseCardRef, {
+        fileName: `wingdex-license-${side}.png`,
+        format: 'png',
+        result: Platform.OS === 'web' ? 'data-uri' : 'tmpfile',
       });
       if (Platform.OS === 'web') {
-        const targetWindow = printWindow;
-        if (!targetWindow) throw new Error('The license print window could not be opened.');
-        targetWindow.onload = () => {
-          targetWindow.focus();
-          targetWindow.print();
-        };
-        targetWindow.document.open();
-        targetWindow.document.write(html);
-        targetWindow.document.close();
-        setNotice('Choose “Save as PDF” in the print dialog to download both sides.');
+        const downloadLink = document.createElement('a');
+        downloadLink.href = imageUri;
+        downloadLink.download = `wingdex-license-${side}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+        setNotice(`License ${side} downloaded as a PNG image.`);
         return;
       }
-      const pdf = await Print.printToFileAsync({ html, width: 842, height: 595 });
       if (!await Sharing.isAvailableAsync()) {
-        throw new Error('Your license PDF was created, but file sharing is unavailable on this device.');
+        throw new Error('Your license image was created, but file sharing is unavailable on this device.');
       }
-      await Sharing.shareAsync(pdf.uri, {
-        mimeType: 'application/pdf',
-        dialogTitle: 'Save your WingDex license',
-        UTI: 'com.adobe.pdf',
+      await Sharing.shareAsync(imageUri, {
+        mimeType: 'image/png',
+        dialogTitle: 'Save your WingDex license image',
+        UTI: 'public.png',
       });
-      setNotice('Choose a destination from the share sheet to save or share your license PDF.');
+      setNotice('Choose a destination from the share sheet to save your license image.');
     } catch (downloadError) {
-      printWindow?.close();
-      setError(downloadError instanceof Error ? downloadError.message : 'Your license PDF could not be created.');
+      setError(downloadError instanceof Error ? downloadError.message : 'Your license image could not be created.');
     } finally {
       setLicenseAction(null);
     }
@@ -563,7 +430,7 @@ export default function UserProfileScreen() {
 
           {activeTab === 'license' && (
             <View style={styles.section}>
-              <View style={styles.licenseCard}>
+              <View ref={licenseCardRef} style={styles.licenseCard}>
                 <Animated.View
                   accessibilityElementsHidden={showReverse}
                   importantForAccessibility={showReverse ? 'no-hide-descendants' : 'auto'}
@@ -717,9 +584,9 @@ export default function UserProfileScreen() {
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Download license as a PDF"
+                  accessibilityLabel="Download the visible license side as a PNG image"
                   disabled={licenseAction !== null}
-                  onPress={() => void downloadLicense()}
+                  onPress={() => void downloadLicenseImage()}
                   style={({ pressed }) => [
                     styles.licenseActionButton,
                     styles.licenseActionSecondary,
@@ -730,13 +597,13 @@ export default function UserProfileScreen() {
                   {licenseAction === 'download'
                     ? <ActivityIndicator color={colors.ink} size="small" />
                     : <Download color={colors.ink} size={16} />}
-                  <Text style={styles.licenseActionSecondaryText}>Download PDF</Text>
+                  <Text style={styles.licenseActionSecondaryText}>Download image</Text>
                 </Pressable>
               </View>
               <Text style={styles.licenseActionHint}>
                 {publicUrl
-                  ? 'Share your public license link or download both sides as a PDF.'
-                  : 'Download both sides as a PDF. Public link sharing is currently unavailable.'}
+                  ? 'Share your public license link or download the visible side as a PNG. Flip to download the other side.'
+                  : 'Download the visible side as a PNG. Flip to download the other side. Public link sharing is currently unavailable.'}
               </Text>
               <View style={styles.detailRow}>
                 <View>

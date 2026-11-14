@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type ImageSourcePropType,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import {
@@ -43,12 +45,19 @@ import {
   type EbirdRegionalChecklist,
   type EbirdSpecies,
 } from '../../src/services/ebird';
+import { fetchRegionalBirdPhotos, type RegionalBirdPhoto } from '../../src/services/regionalBirdPhotos';
 import { getPublishedAnnouncements, type AppAnnouncement } from '../../src/services/adminContent';
 import { worldBirds } from '../../src/data/world-birds';
 import { colors } from '../../src/theme';
 
 const exploreRegionStorageKey = 'wingdex.explore-region.v1';
 const checklistPageSize = 24;
+type DisplayBirdPhoto = {
+  source: ImageSourcePropType;
+  attribution: string;
+  license: string;
+  sourceUrl: string;
+};
 
 function getLocalDayNumber(date = new Date()) {
   const localDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
@@ -68,6 +77,9 @@ export default function ExploreScreen() {
   const [checklistLoading, setChecklistLoading] = useState(false);
   const [checklistError, setChecklistError] = useState<string | null>(null);
   const [checklistRetry, setChecklistRetry] = useState(0);
+  const [regionalPhotos, setRegionalPhotos] = useState<Record<string, RegionalBirdPhoto>>({});
+  const [photoLookupError, setPhotoLookupError] = useState<string | null>(null);
+  const [failedPhotoCodes, setFailedPhotoCodes] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleSpeciesLimit, setVisibleSpeciesLimit] = useState(checklistPageSize);
   const { matches: ebirdMatches, loading: ebirdLoading, error: ebirdError } = useEbirdSpeciesSearch(searchQuery);
@@ -227,7 +239,38 @@ export default function ExploreScreen() {
     () => new Set((activeChecklist?.speciesCodes ?? []).map((code) => code.toLowerCase())),
     [activeChecklist],
   );
-  const visibleRegionSpecies = matchingRegionSpecies.slice(0, visibleSpeciesLimit);
+  const visibleRegionSpecies = useMemo(
+    () => matchingRegionSpecies.slice(0, visibleSpeciesLimit),
+    [matchingRegionSpecies, visibleSpeciesLimit],
+  );
+  const photoSpecies = useMemo(() => {
+    const speciesByCode = new Map<string, EbirdSpecies>();
+    visibleRegionSpecies.forEach((species) => speciesByCode.set(species.speciesCode.toLowerCase(), species));
+    if (regionalSpotlight) speciesByCode.set(regionalSpotlight.speciesCode.toLowerCase(), regionalSpotlight);
+    return [...speciesByCode.values()];
+  }, [regionalSpotlight, visibleRegionSpecies]);
+  const hasVisiblePhotoFailure = photoSpecies.some((species) =>
+    failedPhotoCodes.has(species.speciesCode.toLowerCase()),
+  );
+
+  useEffect(() => {
+    if (photoSpecies.length === 0) return;
+    const controller = new AbortController();
+    void fetchRegionalBirdPhotos(photoSpecies, controller.signal)
+      .then((photos) => {
+        if (!controller.signal.aborted) {
+          setRegionalPhotos((current) => ({ ...current, ...photos }));
+          setPhotoLookupError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setPhotoLookupError(error instanceof Error ? error.message : 'Could not load bird photos.');
+        }
+      });
+    return () => controller.abort();
+  }, [photoSpecies]);
+
   const outsideRegionMatches = searchQuery.trim().length >= 2
     ? ebirdMatches.filter((species) => !regionalSpeciesCodes.has(species.speciesCode.toLowerCase()))
     : [];
@@ -248,9 +291,46 @@ export default function ExploreScreen() {
       || bird.name.toLocaleLowerCase() === species.comName.toLocaleLowerCase(),
     );
   const spotlightGuideBird = regionalSpotlight ? findGuideBird(regionalSpotlight) : undefined;
+  const getSpeciesPhoto = (species: EbirdSpecies, guideBird?: Bird): DisplayBirdPhoto | null => {
+    const localImage = guideBird ? birdImages[guideBird.id] : undefined;
+    if (guideBird && localImage) {
+      return {
+        source: localImage,
+        attribution: guideBird.imageCredit,
+        license: guideBird.imageLicense,
+        sourceUrl: guideBird.imageSourceUrl,
+      };
+    }
+    const photo = regionalPhotos[species.speciesCode.toLowerCase()];
+    return photo
+      ? {
+          source: { uri: photo.uri },
+          attribution: photo.attribution,
+          license: photo.license,
+          sourceUrl: photo.sourceUrl,
+        }
+      : null;
+  };
+  const spotlightPhoto = regionalSpotlight ? getSpeciesPhoto(regionalSpotlight, spotlightGuideBird) : null;
+  const spotlightCode = regionalSpotlight?.speciesCode.toLowerCase();
+  const openPhotoSource = async (photo: DisplayBirdPhoto) => {
+    try {
+      await Linking.openURL(photo.sourceUrl);
+    } catch (error) {
+      setPhotoLookupError(error instanceof Error ? error.message : 'The bird photo source could not be opened.');
+    }
+  };
+  const markPhotoFailed = (speciesCode: string) => {
+    setFailedPhotoCodes((current) => {
+      if (current.has(speciesCode)) return current;
+      return new Set(current).add(speciesCode);
+    });
+  };
 
   const renderSpecies = (species: EbirdSpecies, regional = true, entryNumber?: number) => {
     const guideBird = findGuideBird(species);
+    const speciesPhoto = getSpeciesPhoto(species, guideBird);
+    const speciesCode = species.speciesCode.toLowerCase();
     const isSaved = Boolean(guideBird && savedIds.includes(guideBird.id));
     const isDiscovered = observations.some((observation) =>
       observation.ebirdSpecies?.speciesCode.toLowerCase() === species.speciesCode.toLowerCase()
@@ -270,8 +350,13 @@ export default function ExploreScreen() {
             {regional && entryNumber !== undefined && (
               <Text style={styles.speciesIndex}>FIELD NOTE {String(entryNumber).padStart(2, '0')}</Text>
             )}
-            {guideBird && birdImages[guideBird.id] ? (
-              <Image source={birdImages[guideBird.id]} style={styles.speciesImage} />
+            {speciesPhoto && !failedPhotoCodes.has(speciesCode) ? (
+              <Image
+                source={speciesPhoto.source}
+                style={styles.speciesImage}
+                accessibilityLabel={`Photo of ${species.comName}`}
+                onError={() => markPhotoFailed(speciesCode)}
+              />
             ) : (
               <View style={styles.speciesImageFallback}>
                 <Feather color={colors.inkSoft} size={24} strokeWidth={1.7} />
@@ -288,9 +373,22 @@ export default function ExploreScreen() {
           <ChevronRight color={colors.muted} size={18} />
         </Pressable>
         <View style={styles.speciesFooter}>
-          <Text style={styles.speciesStatus}>
-            {isDiscovered ? 'On your life list' : regional ? 'In regional checklist' : 'Worldwide taxonomy'}
-          </Text>
+          <View style={styles.speciesStatusCopy}>
+            <Text style={styles.speciesStatus}>
+              {isDiscovered ? 'On your life list' : regional ? 'In regional checklist' : 'Worldwide taxonomy'}
+            </Text>
+            {speciesPhoto && !failedPhotoCodes.has(speciesCode) && (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Photo by ${speciesPhoto.attribution}, ${speciesPhoto.license}`}
+                onPress={() => void openPhotoSource(speciesPhoto)}
+              >
+                <Text numberOfLines={1} style={styles.speciesPhotoCredit}>
+                  Photo: {speciesPhoto.attribution} · {speciesPhoto.license}
+                </Text>
+              </Pressable>
+            )}
+          </View>
           {guideBird && (
             <Pressable
               onPress={() => void toggle(guideBird.id)}
@@ -418,6 +516,13 @@ export default function ExploreScreen() {
           <Text style={styles.resultsNote}>
             Field notes from {selectedRegion?.name ?? 'your selected region'} · published regional species.
           </Text>
+          {(photoLookupError || hasVisiblePhotoFailure) && activeChecklist && (
+            <Text accessibilityRole="alert" style={styles.photoLookupError}>
+              {photoLookupError
+                ? `Bird photos could not be loaded: ${photoLookupError}`
+                : 'Some bird photos could not be displayed; placeholders are shown.'}
+            </Text>
+          )}
 
           {!regionSelectionLoaded || checklistLoading ? (
             <View style={styles.stateCard} accessibilityLiveRegion="polite">
@@ -551,8 +656,13 @@ export default function ExploreScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Regional species spotlight: ${regionalSpotlight.comName}, ${regionalSpotlight.sciName}, ${selectedRegion?.name ?? 'Philippines'}`}
             >
-              {spotlightGuideBird && birdImages[spotlightGuideBird.id] ? (
-                <Image source={birdImages[spotlightGuideBird.id]} style={styles.featureImage} />
+              {spotlightPhoto && spotlightCode && !failedPhotoCodes.has(spotlightCode) ? (
+                <Image
+                  source={spotlightPhoto.source}
+                  style={styles.featureImage}
+                  accessibilityLabel={`Photo of ${regionalSpotlight.comName}`}
+                  onError={() => markPhotoFailed(spotlightCode)}
+                />
               ) : (
                 <View style={styles.featureImageFallback}>
                   <Feather color={colors.leaf} size={48} strokeWidth={1.4} />
@@ -565,10 +675,16 @@ export default function ExploreScreen() {
                 <Text style={styles.featureScientific}>{regionalSpotlight.sciName}</Text>
               </View>
             </Pressable>
-            {spotlightGuideBird && (
-              <Text style={styles.photoCredit}>
-                Photo: {spotlightGuideBird.imageCredit} · {spotlightGuideBird.imageLicense}
-              </Text>
+            {spotlightPhoto && spotlightCode && !failedPhotoCodes.has(spotlightCode) && (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Photo by ${spotlightPhoto.attribution}, ${spotlightPhoto.license}`}
+                onPress={() => void openPhotoSource(spotlightPhoto)}
+              >
+                <Text style={styles.photoCredit}>
+                  Photo: {spotlightPhoto.attribution} · {spotlightPhoto.license}
+                </Text>
+              </Pressable>
             )}
           </>
         ) : (
@@ -791,6 +907,7 @@ const styles = StyleSheet.create({
   checklistSource: { color: colors.inkSoft, fontSize: 11, fontWeight: '800', letterSpacing: 1.1 },
   checklistSourceSub: { color: colors.muted, fontSize: 8, fontWeight: '700', letterSpacing: 0.7, marginTop: 2 },
   resultsNote: { color: colors.inkSoft, fontSize: 12, lineHeight: 17, marginTop: 5, marginBottom: 11 },
+  photoLookupError: { color: colors.danger, fontSize: 11, lineHeight: 15, marginTop: -4, marginBottom: 10 },
   stateCard: {
     minHeight: 90,
     flexDirection: 'row',
@@ -820,8 +937,10 @@ const styles = StyleSheet.create({
   speciesName: { color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: '700' },
   speciesScientific: { color: colors.muted, fontSize: 12, lineHeight: 17, fontStyle: 'italic', marginTop: 2 },
   speciesMeta: { color: colors.inkSoft, fontSize: 12, lineHeight: 17, fontWeight: '600', marginTop: 4 },
-  speciesFooter: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 72, marginTop: 6, borderTopWidth: 1, borderTopColor: '#EEF0EA' },
+  speciesFooter: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: 72, marginTop: 6, borderTopWidth: 1, borderTopColor: '#EEF0EA' },
+  speciesStatusCopy: { flex: 1, minWidth: 0, paddingVertical: 5 },
   speciesStatus: { flexShrink: 1, color: colors.muted, fontSize: 12, lineHeight: 16, fontWeight: '600' },
+  speciesPhotoCredit: { color: colors.muted, fontSize: 9, lineHeight: 13, marginTop: 2 },
   loadMoreButton: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, backgroundColor: '#F3F4EE', borderTopWidth: 1, borderTopColor: colors.line },
   loadMoreText: { color: colors.inkSoft, fontSize: 12, fontWeight: '700' },
   loadMoreCount: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
