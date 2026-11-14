@@ -2,6 +2,56 @@
 
 Wingdex is a cross-platform Palawan bird field guide built with Expo and React Native.
 
+## Project presentation
+
+### What is Wingdex?
+
+Wingdex is a birding companion that brings bird identification, a bird guide, and a personal field journal into one mobile app. It is designed to help new and experienced birders learn about birds and keep track of their sightings.
+
+### The problem it addresses
+
+Identifying a bird can be difficult without expert knowledge or a field guide. Even after an identification, sightings and notes can be hard to organize. Wingdex combines photo-assisted identification, searchable bird information, and a personal collection to make these tasks easier.
+
+### Main functions
+
+- **Identify a bird:** Submit a photo for AI-assisted identification. The backend checks the result and can enrich a recognized species with eBird taxonomy.
+- **Explore birds:** Browse and search a starter directory, view bird profiles, and filter species by region.
+- **Explore nearby:** With location permission, find nearby eBird observations and hotspots, or browse regional checklists.
+- **Keep a field journal:** Save observations and species. Records are stored on-device first and can sync to the signed-in user's Supabase account when online.
+- **Manage an account:** Sign in, complete the field profile, and view a public Birding License with profile details and achievements.
+- **Administer content:** The separate admin portal provides operational metrics and tools for managing published birding content.
+
+### How the system works
+
+1. A user signs in and completes the required profile setup.
+2. The app sends a selected bird photo to the Wingdex backend.
+3. The backend validates the upload, requests an identification from Gemini, applies confidence and response checks, and looks up matching eBird taxonomy when available.
+4. The app shows the result and lets the user save it to their field journal. The app also uses eBird-backed endpoints for nearby observations, hotspots, and checklists.
+
+The mobile app is built with **Expo, React Native, and TypeScript**. The **Express/Node.js backend** keeps AI and eBird integrations behind an API. **Supabase** provides authentication and user data storage with access constrained by database policies. The **React/Vite admin portal** uses the backend for protected administrative operations.
+
+### GitHub workflow
+
+The repository's GitHub Actions workflow, [`.github/workflows/sync-split-repos.yml`](./.github/workflows/sync-split-repos.yml), runs when code is pushed to `main`. It:
+
+1. Splits the `backend/` directory into the backend repository's `main` branch.
+2. Synchronizes `admin/` to the admin repository's `main` branch and commits only when files changed.
+3. Uses the `DESTINATION_TOKEN` repository secret for those pushes and a concurrency group so sync jobs do not overlap.
+
+This workflow mirrors the backend and admin code to their separate repositories; it does **not** run the app's tests or builds.
+
+### Suggested presentation demo
+
+1. Show the sign-in screen and explain account/profile setup.
+2. Demonstrate a bird photo identification and how a result is saved.
+3. Browse the bird directory or nearby observations.
+4. Show the personal collection and, if available, the admin portal.
+5. Close with the architecture: mobile app → backend integrations → Supabase data services.
+
+### Scope and limitations
+
+AI identification can be uncertain, especially with unclear photos, and should not be treated as a scientific determination. The worldwide directory is a starter set, regional estimates may be imperfect, and live identification or eBird features depend on configured online services.
+
 ## Application overview
 
 ### Objectives
