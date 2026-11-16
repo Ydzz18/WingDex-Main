@@ -36,19 +36,31 @@ export default function BirdProfileScreen() {
   const { width } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
   const heroHeight = Math.min(350, Math.max(245, width * 0.59));
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/collection');
+  };
+
   if (!observation) {
     return (
       <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <Pressable
+            style={styles.headerButton}
+            onPress={goBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <ArrowLeft color={colors.ink} size={23} strokeWidth={2.2} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Bird profile</Text>
+          <View style={styles.headerSpacer} />
+        </View>
         <View style={styles.emptyState}>
           {loaded || storageError ? (
-            <View style={styles.emptyCopy}>
-              <Text style={styles.emptyText}>
-                {storageError ? 'Could not load this sighting.' : 'Sighting not found.'}
-              </Text>
-              <Pressable onPress={() => router.back()} accessibilityRole="button">
-                <Text style={styles.emptyBack}>Go back</Text>
-              </Pressable>
-            </View>
+            <Text style={styles.emptyText}>
+              {storageError ? 'Could not load this sighting.' : 'Sighting not found.'}
+            </Text>
           ) : (
             <ActivityIndicator color={colors.leafDeep} />
           )}
@@ -74,7 +86,7 @@ export default function BirdProfileScreen() {
       <View style={styles.header}>
         <Pressable
           style={styles.headerButton}
-          onPress={() => router.back()}
+          onPress={goBack}
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
@@ -269,9 +281,7 @@ export default function BirdProfileScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.paper },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
-  emptyCopy: { alignItems: 'center', gap: 12 },
   emptyText: { color: colors.inkSoft, fontSize: 16, textAlign: 'center' },
-  emptyBack: { color: colors.leafDeep, fontSize: 15, fontWeight: '700', textDecorationLine: 'underline' },
   header: {
     minHeight: 68,
     flexDirection: 'row',
@@ -288,6 +298,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerSpacer: { width: 44, height: 44 },
   headerTitle: {
     color: colors.ink,
     fontSize: 21,
