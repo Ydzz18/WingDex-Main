@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -40,6 +40,7 @@ import { NotificationKindIcon } from '../../src/components/NotificationKindIcon'
 import { PageHeader, PageHeaderAction } from '../../src/components/PageHeader';
 import { useEbirdSpeciesSearch } from '../../src/hooks/useEbirdSpeciesSearch';
 import { useSavedBirds } from '../../src/hooks/useSavedBirds';
+import { getBirdingLicenseProfile } from '../../src/services/birdingLicense';
 import {
   getPhilippineRegionalChecklist,
   type EbirdRegionalChecklist,
@@ -58,6 +59,43 @@ type DisplayBirdPhoto = {
   license: string;
   sourceUrl: string;
 };
+
+function RetryableImage({
+  source,
+  style,
+  accessibilityLabel,
+  onFailure,
+}: {
+  source: ImageSourcePropType;
+  style: object;
+  accessibilityLabel: string;
+  onFailure: () => void;
+}) {
+  const [attempt, setAttempt] = useState(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+  }, []);
+
+  const retryOrFail = () => {
+    if (attempt >= 2) {
+      onFailure();
+      return;
+    }
+    retryTimer.current = setTimeout(() => setAttempt((current) => current + 1), (attempt + 1) * 500);
+  };
+
+  return (
+    <Image
+      key={attempt}
+      source={source}
+      style={style}
+      accessibilityLabel={accessibilityLabel}
+      onError={retryOrFail}
+    />
+  );
+}
 
 function getLocalDayNumber(date = new Date()) {
   const localDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
@@ -117,20 +155,40 @@ export default function ExploreScreen() {
 
   useEffect(() => {
     let active = true;
-    AsyncStorage.getItem(exploreRegionStorageKey)
-      .then((storedCode) => {
-        if (!active) return;
-        setSelectedRegionCode(findPhilippineRegion(storedCode)?.code ?? 'NCR');
-        setRegionSelectionLoaded(true);
-        setChecklistLoading(true);
-      })
-      .catch(() => {
-        if (!active) return;
-        setSelectedRegionCode('NCR');
-        setRegionPreferenceError('Your saved Explore region could not be restored; National Capital Region is selected for now.');
-        setRegionSelectionLoaded(true);
-        setChecklistLoading(true);
-      });
+    const restoreRegion = async () => {
+      const warnings: string[] = [];
+      let initialRegion: ReturnType<typeof findPhilippineRegion>;
+      try {
+        initialRegion = findPhilippineRegion(await AsyncStorage.getItem(exploreRegionStorageKey));
+      } catch (error) {
+        warnings.push(error instanceof Error
+          ? `Your saved Explore region could not be restored: ${error.message}`
+          : 'Your saved Explore region could not be restored.');
+      }
+
+      if (!initialRegion) {
+        try {
+          const profile = await getBirdingLicenseProfile();
+          const preferredRegion = findPhilippineRegion(profile.preferred_discovery_region);
+          const homeRegion = findPhilippineRegion(profile.home_region_code);
+          initialRegion = preferredRegion ?? homeRegion;
+          if (profile.preferred_discovery_region && !preferredRegion) {
+            warnings.push('Your preferred discovery region is not recognized; your home region is selected instead.');
+          }
+        } catch (error) {
+          warnings.push(error instanceof Error
+            ? `Your preferred discovery region could not be loaded: ${error.message}`
+            : 'Your preferred discovery region could not be loaded.');
+        }
+      }
+
+      if (!active) return;
+      setSelectedRegionCode(initialRegion?.code ?? 'NCR');
+      if (warnings.length > 0) setRegionPreferenceError(warnings.join(' '));
+      setRegionSelectionLoaded(true);
+      setChecklistLoading(true);
+    };
+    void restoreRegion();
     return () => { active = false; };
   }, []);
 
@@ -351,11 +409,12 @@ export default function ExploreScreen() {
               <Text style={styles.speciesIndex}>FIELD NOTE {String(entryNumber).padStart(2, '0')}</Text>
             )}
             {speciesPhoto && !failedPhotoCodes.has(speciesCode) ? (
-              <Image
+              <RetryableImage
+                key={speciesCode}
                 source={speciesPhoto.source}
                 style={styles.speciesImage}
                 accessibilityLabel={`Photo of ${species.comName}`}
-                onError={() => markPhotoFailed(speciesCode)}
+                onFailure={() => markPhotoFailed(speciesCode)}
               />
             ) : (
               <View style={styles.speciesImageFallback}>
@@ -493,6 +552,25 @@ export default function ExploreScreen() {
           )}
         </View>
 
+        <Pressable
+          onPress={() => router.push('/collection')}
+          style={({ pressed }) => [styles.collectionProgress, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Your life list is growing. ${discoveredCount} of ${catalogCount} guide species discovered, ${progressPercentage} percent. Open collection.`}
+        >
+          <View style={styles.progressTopRow}>
+            <View style={styles.progressIcon}><Feather color={colors.leaf} size={18} /></View>
+            <View style={styles.progressCopy}>
+              <Text style={styles.progressTitle}>Your life list is growing</Text>
+              <Text style={styles.progressCaption}>{progressPercentage}% of guide species discovered</Text>
+            </View>
+            <Text style={styles.progressCount}>{discoveredCount}<Text style={styles.progressTotal}> / {catalogCount}</Text></Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          </View>
+        </Pressable>
+
         <View style={styles.resultsSection}>
           <View style={styles.resultsHeading}>
             <View style={styles.resultsTitleGroup}>
@@ -599,25 +677,6 @@ export default function ExploreScreen() {
           </View>
         )}
 
-        <Pressable
-          onPress={() => router.push('/collection')}
-          style={({ pressed }) => [styles.collectionProgress, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={`Your life list is growing. ${discoveredCount} of ${catalogCount} guide species discovered, ${progressPercentage} percent. Open collection.`}
-        >
-          <View style={styles.progressTopRow}>
-            <View style={styles.progressIcon}><Feather color={colors.leaf} size={18} /></View>
-            <View style={styles.progressCopy}>
-              <Text style={styles.progressTitle}>Your life list is growing</Text>
-              <Text style={styles.progressCaption}>{progressPercentage}% of guide species discovered</Text>
-            </View>
-            <Text style={styles.progressCount}>{discoveredCount}<Text style={styles.progressTotal}> / {catalogCount}</Text></Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-          </View>
-        </Pressable>
-
         {storageError && <Text style={styles.storageError}>Your collection could not be updated. Please try again.</Text>}
 
         <View style={styles.featureHeading}>
@@ -657,11 +716,12 @@ export default function ExploreScreen() {
               accessibilityLabel={`Regional species spotlight: ${regionalSpotlight.comName}, ${regionalSpotlight.sciName}, ${selectedRegion?.name ?? 'Philippines'}`}
             >
               {spotlightPhoto && spotlightCode && !failedPhotoCodes.has(spotlightCode) ? (
-                <Image
+                <RetryableImage
+                  key={spotlightCode}
                   source={spotlightPhoto.source}
                   style={styles.featureImage}
                   accessibilityLabel={`Photo of ${regionalSpotlight.comName}`}
-                  onError={() => markPhotoFailed(spotlightCode)}
+                  onFailure={() => markPhotoFailed(spotlightCode)}
                 />
               ) : (
                 <View style={styles.featureImageFallback}>
