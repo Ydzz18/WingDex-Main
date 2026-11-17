@@ -1,5 +1,7 @@
 import type { EbirdSpecies } from './ebird';
 
+export const birdPhotoUserAgent = 'Wingdex/1.3.4 (https://wingdex-lac.vercel.app/)';
+
 export type RegionalBirdPhoto = {
   uri: string;
   attribution: string;
@@ -70,8 +72,8 @@ async function fetchApiRecord(url: string, signal: AbortSignal, source: string) 
     response = await fetch(url, {
       signal,
       headers: {
-        'User-Agent': 'Wingdex/1.3.4 (https://wingdex-lac.vercel.app/)',
-        'Api-User-Agent': 'Wingdex/1.3.4 (https://wingdex-lac.vercel.app/)',
+        'User-Agent': birdPhotoUserAgent,
+        'Api-User-Agent': birdPhotoUserAgent,
       },
     });
   } catch (error) {

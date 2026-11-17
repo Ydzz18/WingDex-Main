@@ -46,7 +46,11 @@ import {
   type EbirdRegionalChecklist,
   type EbirdSpecies,
 } from '../../src/services/ebird';
-import { fetchRegionalBirdPhotos, type RegionalBirdPhoto } from '../../src/services/regionalBirdPhotos';
+import {
+  birdPhotoUserAgent,
+  fetchRegionalBirdPhotos,
+  type RegionalBirdPhoto,
+} from '../../src/services/regionalBirdPhotos';
 import { getPublishedAnnouncements, type AppAnnouncement } from '../../src/services/adminContent';
 import { worldBirds } from '../../src/data/world-birds';
 import { colors } from '../../src/theme';
@@ -362,7 +366,10 @@ export default function ExploreScreen() {
     const photo = regionalPhotos[species.speciesCode.toLowerCase()];
     return photo
       ? {
-          source: { uri: photo.uri },
+          source: {
+            uri: photo.uri,
+            headers: { 'User-Agent': birdPhotoUserAgent },
+          },
           attribution: photo.attribution,
           license: photo.license,
           sourceUrl: photo.sourceUrl,
